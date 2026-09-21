@@ -1,0 +1,17 @@
+build/bin/
+build/windows/installer/tmp/
+frontend/node_modules/
+frontend/dist/
+dist/
+release-assets/
+*.log
+*_out*.txt
+_build*.txt
+fe_build*.txt
+gen_out*.txt
+test_*.txt
+vet_out*.txt
+wails_*.txt
+wails_bin.txt
+dist_before.txt
+.DS_Store

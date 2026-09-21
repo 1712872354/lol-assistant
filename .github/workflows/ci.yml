@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Frontend build
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Wails build (NSIS)
+        run: wails build -platform windows/amd64 -nsis -ldflags "-s -w"
+
+      - name: Artifact sizes
+        shell: pwsh
+        run: |
+          Get-ChildItem build/bin | ForEach-Object {
+            "{0}`t{1:N1} KB" -f $_.Name, ($_.Length / 1KB)
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lol-assistant-win-x64
+          path: build/bin/*

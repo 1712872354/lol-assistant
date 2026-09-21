@@ -1,0 +1,99 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Frontend build
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go test
+        run: go test ./...
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = $tag.TrimStart("v")
+          "version=$ver" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Wails build (NSIS)
+        run: wails build -platform windows/amd64 -nsis -ldflags "-s -w -X main.version=${{ steps.ver.outputs.tag }}"
+
+      - name: Package artifacts
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $bin = "build/bin"
+          $out = "release-assets"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+          $setup = Get-ChildItem $bin -Filter "*installer*.exe" | Select-Object -First 1
+          if (-not $setup) { $setup = Get-ChildItem $bin -Filter "*.exe" | Where-Object { $_.Name -notmatch "LOL" } | Select-Object -First 1 }
+          $app = Get-ChildItem $bin -Filter "LOL*.exe" | Select-Object -First 1
+          if (-not $app) { $app = Get-ChildItem $bin -Filter "*.exe" | Select-Object -Last 1 }
+
+          $setupName = "LOL助手-Setup-$ver.exe"
+          $portName = "LOL助手-Portable-$ver.zip"
+          Copy-Item $setup.FullName (Join-Path $out $setupName)
+
+          $stage = Join-Path $out "_portable"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item $app.FullName (Join-Path $stage "LOL助手.exe")
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath (Join-Path $out $portName) -Force
+
+          $sums = Get-ChildItem $out -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$h  $($_.Name)"
+          }
+          $sums | Set-Content -Encoding ascii (Join-Path $out "SHA256SUMS.txt")
+
+          Get-ChildItem $out | Format-Table Name, Length
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            release-assets/*

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="LOL助手 图标">
+<title>LOL助手</title>
+<rect width="512" height="512" rx="112" fill="#0A1428"/>
+<polygon points="256.00,7.00 78.46,109.50 78.46,314.50 256.00,417.00 433.54,314.50 433.54,109.50" fill="none" stroke="#14294A" stroke-width="7"/>
+<polygon points="256.00,57.00 121.77,134.50 121.77,289.50 256.00,367.00 390.23,289.50 390.23,134.50" fill="none" stroke="#14294A" stroke-width="7"/>
+<rect x="20" y="20" width="472" height="472" rx="94" fill="none" stroke="#C8AA6E" stroke-opacity="0.55" stroke-width="3"/>
+<path d="M162,76 H350 V212 C350.00,254.24 316.16,287.68 256.0,300 C195.84,287.68 162.00,254.24 162,212 Z" fill="#C8AA6E"/>
+<path d="M174,88 H338 V207.2 C338.00,244.26 308.48,273.59 256.0,284.4 C203.52,273.59 174.00,244.26 174,207.2 Z" fill="none" stroke="#785A28" stroke-opacity="0.59" stroke-width="4"/>
+<path d="M256,100 L272,138.40 V220 H240 V138.40 Z" fill="#0A1428"/>
+<rect x="252" y="140" width="8" height="76" rx="3" fill="#2E9CCA"/>
+<rect x="214" y="220" width="84" height="18" rx="7" fill="#0A1428"/>
+<rect x="246" y="238" width="20" height="28" rx="6" fill="#0A1428"/>
+<circle cx="256" cy="274" r="12" fill="#0A1428"/>
+<rect x="156.00" y="336" width="22" height="78" rx="4" fill="#C8AA6E"/>
+<rect x="156.00" y="392" width="52.00" height="22" rx="4" fill="#C8AA6E"/>
+<rect x="304.00" y="336" width="22" height="78" rx="4" fill="#C8AA6E"/>
+<rect x="304.00" y="392" width="52.00" height="22" rx="4" fill="#C8AA6E"/>
+<path d="M244.00,336.00 H268.00 A24.00,24.00 0 0 1 292.00,360.00 V390.00 A24.00,24.00 0 0 1 268.00,414.00 H244.00 A24.00,24.00 0 0 1 220.00,390.00 V360.00 A24.00,24.00 0 0 1 244.00,336.00 Z M250.00,358.00 H262.00 A8.00,8.00 0 0 1 270.00,366.00 V384.00 A8.00,8.00 0 0 1 262.00,392.00 H250.00 A8.00,8.00 0 0 1 242.00,384.00 V366.00 A8.00,8.00 0 0 1 250.00,358.00 Z" fill="#C8AA6E" fill-rule="evenodd"/>
+<text x="263" y="462" text-anchor="middle" font-family="Microsoft YaHei, PingFang SC, Noto Sans SC, sans-serif" font-weight="700" font-size="30" letter-spacing="14" fill="#9FB0C7">助手</text>
+</svg>

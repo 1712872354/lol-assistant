@@ -1,0 +1,292 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is([data-theme="dark"] *));
+
+/* ── shadcn zinc 亮色 + 参考截图语义色 ─────────────────────────────
+   战绩：列表胜=绿/负=红；队伍表头胜=浅蓝/负=浅红；本人=浅紫
+   对局：我方=蓝系 / 敌方=红系；本人卡=米色金边；近战行胜=蓝/负=红 */
+:root {
+  --brand-gold: #c8aa6e;
+  --radius: 0.625rem;
+
+  --background: #f4f4f5;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #27272a;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #27272a;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #8b5cf6;
+
+  --sidebar: #fafafa;
+  --sidebar-foreground: #18181b;
+  --sidebar-accent: #ede9fe;
+  --sidebar-accent-foreground: #5b21b6;
+  --sidebar-border: #e4e4e7;
+
+  --selected-bg: #ede9fe;
+  --selected-fg: #5b21b6;
+  --selected-ring: #a78bfa;
+  --self-bg: #f5f3ff;
+
+  /* 对局页卡片（参考截图对齐） */
+  --self-card-bg: #fdf9ec;
+  --self-card-border: #e2cf90;
+  --toggle-on: #7c5cff;
+  --rating-bg: #d64ba0;
+  --career-bg: #8c2733;
+
+  --win-bg: #f0fdf4;
+  --win-fg: #15803d;
+  --win-border: #86efac;
+  --win-bar: #22c55e;
+  --loss-bg: #fef2f2;
+  --loss-fg: #b91c1c;
+  --loss-border: #fca5a5;
+  --loss-bar: #ef4444;
+  --remake-bg: #f4f4f5;
+  --remake-fg: #71717a;
+  --remake-border: #d4d4d8;
+  --remake-bar: #a1a1aa;
+
+  --team-win-bg: #eff6ff;
+  --team-win-fg: #1d4ed8;
+  --team-loss-bg: #fef2f2;
+  --team-loss-fg: #b91c1c;
+
+  --ally-bg: #eff6ff;
+  --ally-fg: #1d4ed8;
+  --ally-border: #93c5fd;
+  --ally-soft: #dbeafe;
+  --enemy-bg: #fef2f2;
+  --enemy-fg: #b91c1c;
+  --enemy-border: #fca5a5;
+  --enemy-soft: #fee2e2;
+
+  --good-fg: #15803d;
+}
+
+[data-theme="dark"] {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #18181b;
+  --card-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: #3f3f46;
+  --input: #3f3f46;
+  --ring: #a78bfa;
+
+  --sidebar: #111113;
+  --sidebar-foreground: #e4e4e7;
+  --sidebar-accent: #2e1065;
+  --sidebar-accent-foreground: #ddd6fe;
+  --sidebar-border: #27272a;
+
+  --selected-bg: #2e1065;
+  --selected-fg: #ddd6fe;
+  --selected-ring: #8b5cf6;
+  --self-bg: #1e1533;
+
+  /* 对局页卡片（参考截图对齐） */
+  --self-card-bg: #221c10;
+  --self-card-border: #6e5c2c;
+  --toggle-on: #8b5cf6;
+  --rating-bg: #b84a92;
+  --career-bg: #7a2430;
+
+  --win-bg: #052e16;
+  --win-fg: #86efac;
+  --win-border: #166534;
+  --win-bar: #22c55e;
+  --loss-bg: #450a0a;
+  --loss-fg: #fca5a5;
+  --loss-border: #7f1d1d;
+  --loss-bar: #ef4444;
+  --remake-bg: #27272a;
+  --remake-fg: #a1a1aa;
+  --remake-border: #3f3f46;
+  --remake-bar: #71717a;
+
+  --team-win-bg: #172554;
+  --team-win-fg: #93c5fd;
+  --team-loss-bg: #450a0a;
+  --team-loss-fg: #fca5a5;
+
+  --ally-bg: #172554;
+  --ally-fg: #93c5fd;
+  --ally-border: #1d4ed8;
+  --ally-soft: #1e3a5f;
+  --enemy-bg: #450a0a;
+  --enemy-fg: #fca5a5;
+  --enemy-border: #7f1d1d;
+  --enemy-soft: #5c1a1a;
+
+  --good-fg: #4ade80;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-selected-bg: var(--selected-bg);
+  --color-selected-fg: var(--selected-fg);
+  --color-selected-ring: var(--selected-ring);
+  --color-self-bg: var(--self-bg);
+  --color-self-card-bg: var(--self-card-bg);
+  --color-self-card-border: var(--self-card-border);
+  --color-toggle-on: var(--toggle-on);
+  --color-rating-bg: var(--rating-bg);
+  --color-career-bg: var(--career-bg);
+  --color-win-bg: var(--win-bg);
+  --color-win-fg: var(--win-fg);
+  --color-win-border: var(--win-border);
+  --color-win-bar: var(--win-bar);
+  --color-loss-bg: var(--loss-bg);
+  --color-loss-fg: var(--loss-fg);
+  --color-loss-border: var(--loss-border);
+  --color-loss-bar: var(--loss-bar);
+  --color-remake-bg: var(--remake-bg);
+  --color-remake-fg: var(--remake-fg);
+  --color-remake-border: var(--remake-border);
+  --color-remake-bar: var(--remake-bar);
+  --color-team-win-bg: var(--team-win-bg);
+  --color-team-win-fg: var(--team-win-fg);
+  --color-team-loss-bg: var(--team-loss-bg);
+  --color-team-loss-fg: var(--team-loss-fg);
+  --color-ally-bg: var(--ally-bg);
+  --color-ally-fg: var(--ally-fg);
+  --color-ally-border: var(--ally-border);
+  --color-ally-soft: var(--ally-soft);
+  --color-enemy-bg: var(--enemy-bg);
+  --color-enemy-fg: var(--enemy-fg);
+  --color-enemy-border: var(--enemy-border);
+  --color-enemy-soft: var(--enemy-soft);
+  --color-good-fg: var(--good-fg);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.drag-region {
+  --wails-draggable: drag;
+}
+
+.no-drag {
+  --wails-draggable: no-drag;
+}
+
+/* ── 交互动画 ─────────────────────────────────────────────── */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.popover-animate[data-state="open"] {
+  animation: pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.menu-item {
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.menu-item:active {
+  transform: scale(0.98);
+}
+
+.press-scale {
+  transition:
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.press-scale:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.seg-indicator {
+  transition:
+    left 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms ease;
+}
