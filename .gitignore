@@ -14,4 +14,8 @@ vet_out*.txt
 wails_*.txt
 wails_bin.txt
 dist_before.txt
+*.md5
+fe_u8.txt
+*.exe
+!build/windows/installer/tmp/.gitkeep
 .DS_Store
