@@ -33,7 +33,26 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
 
       - name: Install NSIS
-        run: choco install nsis -y --no-progress
+        run: |
+          choco install nsis -y --no-progress
+          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify makensis
+        shell: pwsh
+        run: |
+          $m = Get-Command makensis -ErrorAction SilentlyContinue
+          if (-not $m) {
+            $fallback = "C:\Program Files (x86)\NSIS\makensis.exe"
+            if (Test-Path $fallback) {
+              echo $fallback | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              echo "Added $fallback to PATH"
+            } else {
+              Write-Error "makensis not found"
+              exit 1
+            }
+          } else {
+            makensis /VERSION
+          }
 
       - name: Frontend build
         working-directory: frontend
@@ -67,10 +86,19 @@ jobs:
           $out = "release-assets"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
 
+          Write-Host "build/bin contents:"
+          Get-ChildItem $bin | Format-Table Name, Length
+
           $setup = Get-ChildItem $bin -Filter "*installer*.exe" | Select-Object -First 1
-          if (-not $setup) { $setup = Get-ChildItem $bin -Filter "*.exe" | Where-Object { $_.Name -notmatch "LOL" } | Select-Object -First 1 }
+          if (-not $setup) {
+            Write-Error "NSIS installer missing in $bin (makensis likely not on PATH)"
+            exit 1
+          }
           $app = Get-ChildItem $bin -Filter "LOL*.exe" | Select-Object -First 1
-          if (-not $app) { $app = Get-ChildItem $bin -Filter "*.exe" | Select-Object -Last 1 }
+          if (-not $app) {
+            Write-Error "Application exe missing in $bin"
+            exit 1
+          }
 
           $setupName = "LOL助手-Setup-$ver.exe"
           $portName = "LOL助手-Portable-$ver.zip"
@@ -80,6 +108,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item $app.FullName (Join-Path $stage "LOL助手.exe")
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath (Join-Path $out $portName) -Force
+          Remove-Item $stage -Recurse -Force
 
           $sums = Get-ChildItem $out -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | ForEach-Object {
             $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
