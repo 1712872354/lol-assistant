@@ -100,13 +100,13 @@ jobs:
             exit 1
           }
 
-          $setupName = "LOL助手-Setup-$ver.exe"
-          $portName = "LOL助手-Portable-$ver.zip"
+          $setupName = "LOLAssistant-Setup-$ver.exe"
+          $portName = "LOLAssistant-Portable-$ver.zip"
           Copy-Item $setup.FullName (Join-Path $out $setupName)
 
           $stage = Join-Path $out "_portable"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item $app.FullName (Join-Path $stage "LOL助手.exe")
+          Copy-Item $app.FullName (Join-Path $stage "LOLAssistant.exe")
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath (Join-Path $out $portName) -Force
           Remove-Item $stage -Recurse -Force
 
