@@ -123,11 +123,25 @@ jobs:
 
           Get-ChildItem $out | Format-Table Name, Length
 
+      - name: Extract changelog notes
+        shell: pwsh
+        run: |
+          $ver = "v${{ steps.ver.outputs.version }}"
+          $cl = Get-Content CHANGELOG.md -Raw
+          $body = "See CHANGELOG.md"
+          if ($cl -match "(?s)## \[$([regex]::Escape($ver))\][^\n]*\r?\n(.*?)(?=\r?\n## \[)") {
+            $body = $Matches[1].Trim()
+          } elseif ($cl -match "(?s)## \[$([regex]::Escape($ver))\][^\n]*\r?\n(.*)") {
+            $body = $Matches[1].Trim()
+          }
+          $body | Set-Content -Path release-notes.md -Encoding utf8
+          Get-Content release-notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: ${{ steps.ver.outputs.tag }}
-          generate_release_notes: true
+          body_path: release-notes.md
           files: |
             release-assets/*

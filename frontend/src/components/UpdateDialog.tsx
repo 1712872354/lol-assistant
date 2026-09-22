@@ -37,10 +37,15 @@ export function UpdateDialog() {
         </div>
 
         {info.notes ? (
-          <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-[11px] leading-relaxed text-muted-foreground">
-            {info.notes}
-          </pre>
-        ) : null}
+          <div className="mt-3">
+            <p className="mb-1 text-[11px] font-medium text-muted-foreground">本次更新</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-[11px] leading-relaxed text-foreground/90">
+              {info.notes}
+            </pre>
+          </div>
+        ) : (
+          <p className="mt-3 text-[11px] text-muted-foreground">本次更新内容暂无说明。</p>
+        )}
 
         {progress ? (
           <div className="mt-3 space-y-1">

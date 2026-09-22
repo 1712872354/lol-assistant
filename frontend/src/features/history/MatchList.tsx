@@ -92,7 +92,9 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
   }, [q.dataUpdatedAt, tab.puuid, queueFilter]);
 
   const goto = (p: number) => {
-    const v = Math.min(Math.max(0, p), totalPages - 1);
+    // hasMore 时允许前往尚未确认的下一页；否则夹到 totalPages-1
+    const max = hasMore ? Math.max(totalPages - 1, p) : Math.max(totalPages - 1, 0);
+    const v = Math.min(Math.max(0, p), max);
     if (v !== page) setPage(tab.puuid, v);
   };
   const commitJump = () => {
@@ -205,7 +207,7 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
           variant="outline"
           size="sm"
           className="h-7 px-2.5 text-xs"
-          disabled={offline || !hasMore || page >= totalPages - 1 || q.isPending}
+          disabled={offline || !hasMore || q.isPending}
           onClick={() => goto(page + 1)}
         >
           下一页
