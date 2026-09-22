@@ -32,6 +32,13 @@ Unicode true
 ####
 ## Include the wails tools
 ####
+# 明确产品标识与可执行文件名（须在 wails_tools.nsh 之前 define，避免被默认值覆盖）
+!define INFO_PROJECTNAME "LOL助手"
+!define INFO_COMPANYNAME "LOL助手"
+!define INFO_PRODUCTNAME "LOL助手"
+!define PRODUCT_EXECUTABLE "LOL助手.exe"
+!define UNINST_KEY_NAME "LOL助手"
+
 !include "wails_tools.nsh"
 
 # The version information for this two must consist of 4 parts
@@ -74,13 +81,13 @@ Name "${INFO_PRODUCTNAME}"
 OutFile "..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the installer's file.
 !ifdef WAILS_INSTALL_SCOPE
   !if "${WAILS_INSTALL_SCOPE}" == "user"
-    InstallDir "$LOCALAPPDATA\Programs\${INFO_PRODUCTNAME}"
+    InstallDir "$LOCALAPPDATA\Programs\LOL助手"
   !else
-    InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}"
+    InstallDir "$PROGRAMFILES64\LOL助手"
   !endif
 !else
-  InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}"
-!endif # Default installing folder ($PROGRAMFILES is Program Files folder).
+  InstallDir "$PROGRAMFILES64\LOL助手"
+!endif # 默认安装到 Program Files\LOL助手
 ShowInstDetails show # This will always show the installation details.
 
 Function .onInit

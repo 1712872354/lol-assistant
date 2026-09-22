@@ -76,7 +76,12 @@ jobs:
           "tag=$tag" >> $env:GITHUB_OUTPUT
 
       - name: Wails build (NSIS)
-        run: wails build -platform windows/amd64 -nsis -ldflags "-s -w -X main.version=${{ steps.ver.outputs.tag }}"
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $info = Get-Content build/windows/info.json -Raw | ConvertFrom-Json
+          $info.productVersion = $ver
+          $info | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 build/windows/info.json
+          wails build -platform windows/amd64 -nsis -ldflags "-s -w -X main.version=${{ steps.ver.outputs.tag }}"
 
       - name: Package artifacts
         shell: pwsh
