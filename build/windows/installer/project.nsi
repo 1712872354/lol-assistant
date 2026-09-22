@@ -1,4 +1,4 @@
-﻿Unicode true
+Unicode true
 
 ####
 ## Please note: Template replacements don't work in this file. They are provided with default defines like
@@ -40,6 +40,9 @@
 !define UNINST_KEY_NAME "LOL助手"
 
 !include "wails_tools.nsh"
+
+# 已安装则优先沿用上次目录（InstallLocation；旧版由 .onInit 从 DisplayIcon/UninstallString 反推）
+InstallDirRegKey HKLM "${UNINST_KEY}" "InstallLocation"
 
 # The version information for this two must consist of 4 parts
 VIProductVersion "${INFO_PRODUCTVERSION}.0"
@@ -92,7 +95,56 @@ ShowInstDetails show # This will always show the installation details.
 
 Function .onInit
    !insertmacro wails.checkArchitecture
+   !insertmacro DetectPreviousInstallDir
 FunctionEnd
+
+# 识别已安装目录并写入 $INSTDIR（供目录页作为默认值）。
+# 顺序：InstallLocation → DisplayIcon 父目录 → UninstallString 父目录；HKLM 优先，再 HKCU。
+!macro DetectPreviousInstallDir
+    SetRegView 64
+    StrCpy $R9 ""
+
+    ReadRegStr $R9 HKLM "${UNINST_KEY}" "InstallLocation"
+    ${If} $R9 == ""
+        ReadRegStr $R9 HKCU "${UNINST_KEY}" "InstallLocation"
+    ${EndIf}
+
+    ${If} $R9 == ""
+        ReadRegStr $R8 HKLM "${UNINST_KEY}" "DisplayIcon"
+        ${If} $R8 == ""
+            ReadRegStr $R8 HKCU "${UNINST_KEY}" "DisplayIcon"
+        ${EndIf}
+        ${If} $R8 != ""
+            # DisplayIcon 形如 ...\LOL助手.exe 或 ...\LOL助手.exe,0（GetParent 取父目录即可）
+            ${GetParent} "$R8" $R9
+        ${EndIf}
+    ${EndIf}
+
+    ${If} $R9 == ""
+        ReadRegStr $R8 HKLM "${UNINST_KEY}" "UninstallString"
+        ${If} $R8 == ""
+            ReadRegStr $R8 HKCU "${UNINST_KEY}" "UninstallString"
+        ${EndIf}
+        ${If} $R8 != ""
+            # UninstallString 形如 "...\uninstall.exe"（含引号，先剥引号）
+            StrCpy $R7 $R8 1
+            ${If} $R7 == '"'
+                StrCpy $R8 $R8 "" 1
+            ${EndIf}
+            StrCpy $R7 $R8 1 -1
+            ${If} $R7 == '"'
+                StrCpy $R8 $R8 -1
+            ${EndIf}
+            ${GetParent} "$R8" $R9
+        ${EndIf}
+    ${EndIf}
+
+    ${If} $R9 != ""
+        ${If} ${FileExists} "$R9\*.*"
+            StrCpy $INSTDIR $R9
+        ${EndIf}
+    ${EndIf}
+!macroend
 
 Section
     !insertmacro wails.setShellContext
@@ -110,6 +162,18 @@ Section
     !insertmacro wails.associateCustomProtocols
 
     !insertmacro wails.writeUninstaller
+
+    # 记录安装目录，下次安装/更新自动沿用
+    SetRegView 64
+    !ifdef WAILS_INSTALL_SCOPE
+      !if "${WAILS_INSTALL_SCOPE}" == "user"
+        WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+      !else
+        WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+      !endif
+    !else
+        WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+    !endif
 SectionEnd
 
 Section "uninstall"

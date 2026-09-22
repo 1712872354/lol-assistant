@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Download, ExternalLink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useUpdateStore } from "@/stores/updateStore";
+import { formatReleaseNotes, useUpdateStore } from "@/stores/updateStore";
 
 /** 更新对话框：下载并安装 / 稍后 / 打开发布页 */
 export function UpdateDialog() {
@@ -55,7 +55,7 @@ export function UpdateDialog() {
           <div className="mt-3">
             <p className="mb-1 text-[11px] font-medium text-muted-foreground">本次更新</p>
             <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-[11px] leading-relaxed text-foreground/90">
-              {info.notes}
+              {formatReleaseNotes(info.notes)}
             </pre>
           </div>
         ) : (

@@ -109,39 +109,39 @@
   --selected-ring: #8b5cf6;
   --self-bg: #1e1533;
 
-  /* 对局页卡片（参考截图对齐） */
-  --self-card-bg: #221c10;
-  --self-card-border: #6e5c2c;
+  /* 对局页：大面积底色压低饱和，胜负/敌我主要靠左侧色条与文字区分 */
+  --self-card-bg: #2a2416;
+  --self-card-border: #a08948;
   --toggle-on: #8b5cf6;
-  --rating-bg: #b84a92;
-  --career-bg: #7a2430;
+  --rating-bg: #9d4d8a;
+  --career-bg: #8a4048;
 
-  --win-bg: #052e16;
+  --win-bg: #0d2018;
   --win-fg: #86efac;
-  --win-border: #166534;
-  --win-bar: #22c55e;
-  --loss-bg: #450a0a;
-  --loss-fg: #fca5a5;
-  --loss-border: #7f1d1d;
-  --loss-bar: #ef4444;
+  --win-border: #1f5c3c;
+  --win-bar: #34d399;
+  --loss-bg: #2a1216;
+  --loss-fg: #f5b5b5;
+  --loss-border: #6b2a30;
+  --loss-bar: #f87171;
   --remake-bg: #27272a;
   --remake-fg: #a1a1aa;
   --remake-border: #3f3f46;
   --remake-bar: #71717a;
 
-  --team-win-bg: #172554;
-  --team-win-fg: #93c5fd;
-  --team-loss-bg: #450a0a;
-  --team-loss-fg: #fca5a5;
+  --team-win-bg: #0f2430;
+  --team-win-fg: #8ec8e8;
+  --team-loss-bg: #281418;
+  --team-loss-fg: #f0b0b0;
 
-  --ally-bg: #172554;
-  --ally-fg: #93c5fd;
-  --ally-border: #1d4ed8;
-  --ally-soft: #1e3a5f;
-  --enemy-bg: #450a0a;
-  --enemy-fg: #fca5a5;
-  --enemy-border: #7f1d1d;
-  --enemy-soft: #5c1a1a;
+  --ally-bg: #121a28;
+  --ally-fg: #8ec5ef;
+  --ally-border: #3d5a80;
+  --ally-soft: #1a2436;
+  --enemy-bg: #1c1416;
+  --enemy-fg: #f0a8ad;
+  --enemy-border: #8b4550;
+  --enemy-soft: #2a1c1f;
 
   --good-fg: #4ade80;
 }
@@ -236,6 +236,30 @@
   .tnum {
     font-variant-numeric: tabular-nums;
   }
+}
+
+/* 暗色滚动条：避免亮灰条在深底上刺眼 */
+[data-theme="dark"] {
+  scrollbar-color: #3f3f46 #18181b;
+  scrollbar-width: thin;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #18181b;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
 }
 
 .drag-region {

@@ -10,9 +10,8 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -52,11 +51,11 @@ type ghAsset struct {
 }
 
 type ghRelease struct {
-	TagName    string    `json:"tag_name"`
-	Body       string    `json:"body"`
+	TagName     string    `json:"tag_name"`
+	Body        string    `json:"body"`
 	PublishedAt time.Time `json:"published_at"`
-	HTMLURL    string    `json:"html_url"`
-	Assets     []ghAsset `json:"assets"`
+	HTMLURL     string    `json:"html_url"`
+	Assets      []ghAsset `json:"assets"`
 }
 
 // apiBaseCandidates 官方 + 国内镜像（API 与下载共用前缀规则）
@@ -80,8 +79,8 @@ func downloadURLCandidates(official string) []string {
 
 // Checker 更新检查器
 type Checker struct {
-	Current string // 当前版本，如 v0.1.0
-	Client  *http.Client
+	Current    string // 当前版本，如 v0.1.0
+	Client     *http.Client
 	OnProgress func(Progress)
 }
 
@@ -141,11 +140,16 @@ func (c *Checker) DownloadAndInstall(setupURL, sha256Hex string) (string, error)
 	}
 
 	c.emit(Progress{Stage: "launching", Percent: 100, Message: "启动安装程序"})
-	if err := launch(dst); err != nil {
+	installDir := detectInstallDir()
+	if err := launch(dst, installDir); err != nil {
 		c.emit(Progress{Stage: "error", Message: "启动安装失败: " + err.Error()})
 		return "", err
 	}
-	c.emit(Progress{Stage: "done", Percent: 100, Message: "安装程序已启动"})
+	msg := "安装程序已启动"
+	if installDir != "" {
+		msg = "安装程序已启动（沿用目录 " + installDir + "）"
+	}
+	c.emit(Progress{Stage: "done", Percent: 100, Message: msg})
 	return dst, nil
 }
 
@@ -191,7 +195,7 @@ func buildInfo(rel *ghRelease, current string) *Info {
 	info := &Info{
 		CurrentVersion: normalizeVer(current),
 		Version:        ver,
-		Notes:          strings.TrimSpace(rel.Body),
+		Notes:          formatNotes(rel.Body),
 		PubDate:        rel.PublishedAt.Format(time.RFC3339),
 		ReleaseURL:     rel.HTMLURL,
 	}
@@ -226,6 +230,99 @@ func buildInfo(rel *ghRelease, current string) *Info {
 	info.HasUpdate = IsNewer(info.Version, info.CurrentVersion)
 	return info
 }
+
+// formatNotes Release 说明 → 更新弹窗可读纯文本（安装/校验段去掉，Markdown 语法压平）。
+// 在 Go 侧清洗，前端拿到即可展示，避免旧前端或 <pre> 直接露出 Markdown。
+func formatNotes(md string) string {
+	s := strings.ReplaceAll(md, "\r\n", "\n")
+	// 去掉「安装 / 安装校验」整段（含包表格与哈希示例）
+	s = dropSection(s, "安装校验")
+	s = dropSection(s, "安装")
+	// 代码块 → 缩进行
+	s = reCodeBlock.ReplaceAllStringFunc(s, func(m string) string {
+		sub := reCodeBlock.FindStringSubmatch(m)
+		body := ""
+		if len(sub) > 1 {
+			body = sub[1]
+		}
+		lines := strings.Split(body, "\n")
+		for i, l := range lines {
+			l = strings.TrimSpace(l)
+			if l != "" {
+				lines[i] = "    " + l
+			} else {
+				lines[i] = ""
+			}
+		}
+		return strings.Join(lines, "\n")
+	})
+	// 表格分隔行去掉；数据行单元格用 · 连接
+	s = reTableSep.ReplaceAllString(s, "")
+	s = reTableRow.ReplaceAllStringFunc(s, func(m string) string {
+		row := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(m), "|"), "|")
+		cells := strings.Split(row, "|")
+		out := make([]string, 0, len(cells))
+		for _, c := range cells {
+			c = strings.TrimSpace(c)
+			if c != "" {
+				out = append(out, c)
+			}
+		}
+		return strings.Join(out, " · ")
+	})
+	// 标题 / 列表 / 加粗 / 行内代码 / 分隔线
+	s = reHeading.ReplaceAllString(s, "")
+	s = reBullet.ReplaceAllString(s, "• ")
+	s = reBold.ReplaceAllString(s, "$1")
+	s = reInlineCode.ReplaceAllString(s, "$1")
+	s = reHR.ReplaceAllString(s, "")
+	s = reBlank.ReplaceAllString(s, "\n\n")
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "本次更新内容暂无说明。"
+	}
+	return s
+}
+
+// dropSection 删除 `### <title>` 到下一标题/分隔线/文末 的整段（Go regexp 无 lookahead，按行扫描）
+func dropSection(s, title string) string {
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	skipping := false
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+		if !skipping {
+			// 命中目标标题：允许 ### 后空格/制表
+			if strings.HasPrefix(trim, "###") {
+				rest := strings.TrimSpace(strings.TrimPrefix(trim, "###"))
+				if rest == title {
+					skipping = true
+					continue
+				}
+			}
+			out = append(out, line)
+			continue
+		}
+		// 跳过中：遇下一标题或分隔线则结束
+		if strings.HasPrefix(trim, "#") || strings.HasPrefix(trim, "---") {
+			skipping = false
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+var (
+	reCodeBlock  = regexp.MustCompile("(?s)```[\\w-]*\\n([\\s\\S]*?)```")
+	reTableSep   = regexp.MustCompile(`(?m)^\|[\s:|-]+\|$`)
+	reTableRow   = regexp.MustCompile(`(?m)^\|.+\|$`)
+	reHeading    = regexp.MustCompile(`(?m)^#{1,6}[ \t]+`)
+	reBullet     = regexp.MustCompile(`(?m)^\s*[-*+][ \t]+`)
+	reBold       = regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	reInlineCode = regexp.MustCompile("`([^`]+)`")
+	reHR         = regexp.MustCompile(`(?m)^---+[ \t]*$`)
+	reBlank      = regexp.MustCompile(`\n{3,}`)
+)
 
 // parseSumsRemote 从 SHA256SUMS 文本里找 Setup 资产哈希
 func parseSumsRemote(_ string, assets []ghAsset) (string, error) {
@@ -352,19 +449,6 @@ func fileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-// launch 拉起安装包（Windows 显示 UAC/安装 UI；其它平台直接 exec）
-func launch(path string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command(path)
-	default:
-		cmd = exec.Command(path)
-	}
-	cmd.Dir = filepath.Dir(path)
-	return cmd.Start()
 }
 
 // normalizeVer "v1.2.3" / "1.2.3" → "1.2.3"

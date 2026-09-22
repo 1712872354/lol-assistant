@@ -1,6 +1,9 @@
 package update
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestIsNewer(t *testing.T) {
 	cases := []struct {
@@ -26,5 +29,53 @@ func TestParseVer(t *testing.T) {
 	v := parseVer("v1.2.3-rc1")
 	if v != [3]int{1, 2, 3} {
 		t.Fatalf("parseVer = %v", v)
+	}
+}
+
+func TestFormatNotes(t *testing.T) {
+	md := "### 安装\r\n\r\n| 包 | 说明 |\r\n|----|------|\r\n| `Setup-1.0.0.exe` | NSIS 安装包 |\r\n\r\nWindows x64 · 需 WebView2\r\n\r\n### 修复\r\n\r\n- **战绩数量真正生效**：不再写死 20\r\n\r\n### 安装校验\r\n\r\n```powershell\r\nGet-FileHash x\r\n```\r\n\r\n---\r\n"
+	got := formatNotes(md)
+	if strings.Contains(got, "### ") || strings.Contains(got, "|") || strings.Contains(got, "```") {
+		t.Fatalf("markdown leaked: %q", got)
+	}
+	if strings.Contains(got, "安装包") || strings.Contains(got, "Get-FileHash") {
+		t.Fatalf("install section not dropped: %q", got)
+	}
+	if !strings.Contains(got, "战绩数量真正生效") || !strings.Contains(got, "不再写死 20") {
+		t.Fatalf("fix section lost: %q", got)
+	}
+	if !strings.Contains(got, "• 战绩数量真正生效") {
+		t.Fatalf("bullet not normalized: %q", got)
+	}
+}
+
+func TestFormatNotesEmpty(t *testing.T) {
+	if got := formatNotes("   "); got != "本次更新内容暂无说明。" {
+		t.Fatalf("empty notes = %q", got)
+	}
+}
+
+func TestInstallerArgs(t *testing.T) {
+	if got := installerArgs(""); got != "" {
+		t.Fatalf("empty dir = %q", got)
+	}
+	if got := installerArgs(`"C:\Program Files\LOL助手\"`); got != `/D=C:\Program Files\LOL助手` {
+		t.Fatalf("dir = %q", got)
+	}
+	if got := installerArgs(`D:\Apps\LOL助手`); got != `/D=D:\Apps\LOL助手` {
+		t.Fatalf("dir = %q", got)
+	}
+}
+
+func TestParentOf(t *testing.T) {
+	cases := map[string]string{
+		`C:\Program Files\LOL助手\LOL助手.exe`:       `C:\Program Files\LOL助手`,
+		`C:\Program Files\LOL助手\LOL助手.exe,0`:     `C:\Program Files\LOL助手`,
+		`"C:\Program Files\LOL助手\uninstall.exe"`: `C:\Program Files\LOL助手`,
+	}
+	for in, want := range cases {
+		if got := parentOf(in); got != want {
+			t.Fatalf("parentOf(%q)=%q want %q", in, got, want)
+		}
 	}
 }

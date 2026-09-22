@@ -1,5 +1,39 @@
 import { create } from "zustand";
-import { callApp, onAppEvent } from "@/lib/backend";
+import { callApp, callAppStrict, onAppEvent } from "@/lib/backend";
+
+/** Release 说明 → 弹窗可读纯文本（后端 formatNotes 已清洗；此处兜底再压一遍） */
+export function formatReleaseNotes(md: string): string {
+  if (!md) return "";
+  let s = md.replace(/\r\n/g, "\n");
+  // 弹窗只看变更说明：去掉安装包表格与校验示例
+  s = s.replace(/^###[ \t]*安装校验[ \t]*\n[\s\S]*?(?=\n#{1,3}[ \t]|\n---|$)/gm, "");
+  s = s.replace(/^###[ \t]*安装[ \t]*\n[\s\S]*?(?=\n#{1,3}[ \t]|\n---|$)/gm, "");
+  // 代码块：保留内容为缩进行，去掉围栏
+  s = s.replace(/```[\w-]*\n([\s\S]*?)```/g, (_m, body: string) =>
+    body
+      .split("\n")
+      .map((l) => (l.trim() ? "    " + l.trim() : ""))
+      .join("\n"),
+  );
+  // 表格：去分隔行，单元格用 · 拼接
+  s = s.replace(/^\|[\s:|-]+\|$/gm, "");
+  s = s.replace(/^\|(.+)\|$/gm, (_m, row: string) =>
+    row
+      .split("|")
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .join(" · "),
+  );
+  // 标题 / 列表 / 强调 / 行内代码
+  s = s.replace(/^#{1,6}[ \t]+/gm, "");
+  s = s.replace(/^\s*[-*+][ \t]+/gm, "• ");
+  s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
+  s = s.replace(/`([^`]+)`/g, "$1");
+  s = s.replace(/^---+[ \t]*$/gm, "");
+  // 收紧空行
+  s = s.replace(/\n{3,}/g, "\n\n").trim();
+  return s || "本次更新内容暂无说明。";
+}
 
 export interface UpdateInfo {
   hasUpdate: boolean;
@@ -91,12 +125,13 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     });
 
     try {
-      await callApp<string>("DownloadAndInstallUpdate", info.setupUrl, info.sha256 ?? "");
+      // 严格调用：失败必须进 catch，不能把 null 当成功
+      await callAppStrict<string>("DownloadAndInstallUpdate", info.setupUrl, info.sha256 ?? "");
       set({
         installing: false,
         progress: { stage: "done", percent: 100, message: "安装程序已启动，即将退出" },
       });
-      // 2 秒内未退出则提示手动运行安装包；弹窗保持可关闭
+      // 约 2s 内未退出则提示手动处理（后端另有 os.Exit 兜底）
       window.setTimeout(() => {
         const s = useUpdateStore.getState();
         if (s.progress?.stage === "done") {
@@ -104,7 +139,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
             quitHint: "应用未自动退出。请关闭本程序后，运行安装包完成更新。",
           });
         }
-      }, 2000);
+      }, 2500);
     } catch (e) {
       set({
         installing: false,

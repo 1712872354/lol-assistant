@@ -2,6 +2,38 @@
 
 本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions `generate_release_notes` 补充提交列表）。
 
+## [v1.0.1] - 2026-09-22
+
+### 安装
+
+| 包 | 说明 |
+|----|------|
+| `LOLAssistant-Setup-1.0.1.exe` | NSIS 安装包（推荐） |
+| `LOLAssistant-Portable-1.0.1.zip` | 绿色版，解压即用 |
+| `SHA256SUMS.txt` | 校验哈希 |
+
+Windows x64 · 需 WebView2 运行时
+
+### 修复
+
+- **应用内更新安装失败**（`requires elevation`）：安装包改为 UAC 提权启动
+- **更新后应用不退出**：强制退出改为原子标记 + 不依赖托盘的 `os.Exit` 兜底
+- **更新说明露出原始 Markdown**：改为可读纯文本（去掉安装/校验段与表格符号）
+- **安装目录不沿用已装路径**：自动识别注册表/卸载项中的安装目录，本次安装默认沿用；更新时以 `/D=` 传入
+
+### 改进
+
+- 暗色主题下对局页配色：大面积蓝/红色块降饱和，胜负与敌我改靠色条和文字区分，滚动条暗色化
+
+### 安装校验
+
+```powershell
+Get-FileHash .\LOLAssistant-Setup-1.0.1.exe -Algorithm SHA256
+# 与 SHA256SUMS.txt 中对应行比对
+```
+
+---
+
 ## [v1.0.0] - 2026-09-22
 
 ### 安装

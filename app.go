@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"log/slog"
+	"os"
+	"sync/atomic"
+	"time"
 
 	"github.com/1712872354/lol-assistant/internal/config"
 	"github.com/1712872354/lol-assistant/internal/lcu"
@@ -24,7 +27,7 @@ type App struct {
 	live      *liveclient.Client // M3 Live Client 数据端 :2999（fail-soft，仅游戏中可达）
 	game      *gameinfo.Service  // M3 对局信息聚合服务
 	version   string             // 构建注入（ldflags -X main.version=）
-	forceQuit bool               // 强制退出：更新安装/托盘退出时绕过 closeToTray 拦截
+	forceQuit atomic.Bool        // 强制退出：更新安装/托盘退出时绕过 closeToTray 拦截（跨 goroutine，须原子）
 }
 
 // NewApp 构造应用实例（wails.Run 前调用，ctx 于 startup 注入）
@@ -73,7 +76,7 @@ func (a *App) showMainWindow() {
 
 // quitFromTray 托盘「退出」：收起托盘后结束应用
 func (a *App) quitFromTray() {
-	a.forceQuit = true
+	a.forceQuit.Store(true)
 	tray.Stop()
 	if a.ctx != nil {
 		runtime.Quit(a.ctx)
@@ -83,7 +86,7 @@ func (a *App) quitFromTray() {
 // beforeClose 拦截关窗：closeToTray=true 时隐藏到托盘并阻止退出；
 // forceQuit=true（更新安装/主动退出）时不拦截，保证进程真正退出以释放文件锁。
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
-	if a.forceQuit {
+	if a.forceQuit.Load() {
 		return false
 	}
 	if a.cfg.Get().CloseToTray {
@@ -269,10 +272,17 @@ func (a *App) DownloadAndInstallUpdate(setupURL, sha256Hex string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	// 安装器启动后强制退出本进程（绕过 closeToTray），便于覆盖写入
+	// 安装器启动后强制退出本进程（绕过 closeToTray），便于覆盖写入。
+	// 先挂上不依赖 UI/托盘的强退兜底，再走 Quit；systray.Quit 可能阻塞，故放后台。
 	go func() {
-		a.forceQuit = true
-		tray.Stop()
+		go func() {
+			time.Sleep(900 * time.Millisecond)
+			slog.Warn("update: force exit process for installer")
+			os.Exit(0)
+		}()
+		time.Sleep(150 * time.Millisecond) // 让 RPC 响应回到前端
+		a.forceQuit.Store(true)
+		go tray.Stop()
 		if a.ctx != nil {
 			runtime.Quit(a.ctx)
 		}
@@ -302,12 +312,12 @@ func (a *App) WindowClose() {
 	if a.ctx == nil {
 		return
 	}
-	if !a.forceQuit && a.cfg.Get().CloseToTray {
+	if !a.forceQuit.Load() && a.cfg.Get().CloseToTray {
 		runtime.WindowHide(a.ctx)
 		slog.Info("window hidden to tray")
 		return
 	}
-	a.forceQuit = true
+	a.forceQuit.Store(true)
 	tray.Stop()
 	runtime.Quit(a.ctx)
 }

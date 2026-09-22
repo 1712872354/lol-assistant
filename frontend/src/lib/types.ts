@@ -36,7 +36,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 
 export type ViewKey = "history" | "gameinfo" | "settings";
 
-export const APP_VERSION = "v1.0.0";
+export const APP_VERSION = "v1.0.1";
 
 /** 对局信息页：筛选视图 */
 export type GameinfoSideFilter = "ally" | "all" | "enemy";

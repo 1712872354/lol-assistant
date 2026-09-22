@@ -58,13 +58,13 @@ export function GameInfoView() {
               <div className="flex min-w-[120px] flex-1 items-center gap-1">
                 <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-muted/70">
                   <div
-                    className="h-full rounded-full bg-ally-fg/70"
+                    className="h-full rounded-full bg-ally-fg/55"
                     style={{ width: `${Math.min(100, allyTeam.winRate)}%` }}
                   />
                 </div>
                 <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-muted/70">
                   <div
-                    className="ml-auto h-full rounded-full bg-enemy-fg/70"
+                    className="ml-auto h-full rounded-full bg-enemy-fg/55"
                     style={{ width: `${Math.min(100, enemyTeam.winRate)}%` }}
                   />
                 </div>

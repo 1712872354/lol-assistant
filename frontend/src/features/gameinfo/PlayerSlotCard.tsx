@@ -79,8 +79,8 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
         className={cn(
           "flex h-full min-h-0 flex-col overflow-hidden rounded-[14px] border p-2.5",
           ally
-            ? "border-ally-border/45 bg-linear-to-b from-ally-bg/85 to-transparent"
-            : "border-enemy-border/45 bg-linear-to-b from-enemy-bg/85 to-transparent",
+            ? "border-ally-border/40 bg-linear-to-b from-ally-bg/50 to-transparent"
+            : "border-enemy-border/40 bg-linear-to-b from-enemy-bg/50 to-transparent",
         )}
       >
         <div className="flex shrink-0 items-center gap-2.5">
@@ -174,10 +174,10 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
       className={cn(
         "flex h-full min-h-0 flex-col overflow-hidden rounded-[14px] border shadow-sm",
         slot.isSelf
-          ? "border-self-card-border bg-self-card-bg ring-1 ring-self-card-border/40"
+          ? "border-self-card-border bg-self-card-bg ring-1 ring-self-card-border/35"
           : ally
-            ? "border-ally-border/60 bg-card"
-            : "border-enemy-border/60 bg-card",
+            ? "border-ally-border/50 bg-card"
+            : "border-enemy-border/50 bg-card",
       )}
     >
       {/* 头部：点击身份区即可进战绩页 */}
@@ -309,8 +309,8 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
             className={cn(
               "flex items-center gap-2 rounded-lg border-l-[3px] px-2 py-1",
               r.win
-                ? "border-l-win-bar bg-team-win-bg/80"
-                : "border-l-loss-bar bg-team-loss-bg/80",
+                ? "border-l-win-bar bg-team-win-bg/55"
+                : "border-l-loss-bar bg-team-loss-bg/55",
             )}
           >
             <AssetImg kind="champion" id={r.championId} size={28} className="rounded-md" />

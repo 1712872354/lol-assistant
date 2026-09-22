@@ -86,8 +86,8 @@ export function TeamPanel({ team, offline, opponent }: Props) {
       className={cn(
         "flex min-h-0 flex-1 flex-col rounded-2xl border p-2.5",
         ally
-          ? "border-ally-border/50 bg-linear-to-b from-ally-bg/80 to-ally-bg/25"
-          : "border-enemy-border/50 bg-linear-to-b from-enemy-bg/80 to-enemy-bg/25",
+          ? "border-ally-border/45 bg-linear-to-b from-ally-bg/55 to-ally-bg/15"
+          : "border-enemy-border/45 bg-linear-to-b from-enemy-bg/55 to-enemy-bg/15",
       )}
     >
       <header className="mb-2 flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-0.5">
