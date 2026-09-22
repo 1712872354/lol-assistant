@@ -62,12 +62,26 @@ func fromExecutable() string {
 	return cleanDir(filepath.Dir(exe))
 }
 
-// parentOf 从带引号的 exe/uninstall 路径取父目录（仅解析字符串，不校验目录存在）
+// parentOf 从带引号/附带参数的 exe/uninstall 字符串取父目录（仅解析，不校验存在）。
+// 支持："C:\Program Files\app.exe" /S 、C:\Program Files\app.exe,0
 func parentOf(s string) string {
 	s = strings.TrimSpace(s)
-	s = strings.Trim(s, `"`)
+	// 引号包裹：只取引号内路径，丢弃后续参数
+	if strings.HasPrefix(s, `"`) {
+		rest := s[1:]
+		if end := strings.Index(rest, `"`); end >= 0 {
+			s = rest[:end]
+		} else {
+			s = strings.Trim(rest, `"`)
+		}
+	} else if i := strings.Index(strings.ToLower(s), ".exe"); i >= 0 {
+		// 无引号但含 .exe：截到 .exe 结束（保留空格目录名，丢弃后续参数）
+		s = s[:i+4]
+	} else if i := strings.IndexAny(s, " \t"); i >= 0 {
+		s = s[:i]
+	}
 	// DisplayIcon 可能带 ,0 图标索引
-	if i := strings.LastIndex(s, ".exe,"); i >= 0 {
+	if i := strings.LastIndex(strings.ToLower(s), ".exe,"); i >= 0 {
 		s = s[:i+4]
 	}
 	if s == "" {
@@ -77,8 +91,7 @@ func parentOf(s string) string {
 }
 
 func cleanDir(dir string) string {
-	dir = strings.TrimSpace(strings.Trim(dir, `"`))
-	dir = strings.TrimRight(dir, `\/`)
+	dir = sanitizeInstallDir(dir)
 	if dir == "" {
 		return ""
 	}

@@ -90,7 +90,8 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
   const gameId = useHistoryStore((s) => s.selections[tab.puuid] ?? null);
 
   const detailQ = useQuery({
-    queryKey: ["hist", "detail", gameId],
+    // 视角相关数据：缓存键必须含 selfPuuid，避免多标签串「我方/对方」
+    queryKey: ["hist", "detail", gameId, tab.puuid],
     queryFn: () => fetchMatchDetail(gameId as number, tab.puuid),
     enabled: gameId != null,
   });
@@ -203,19 +204,36 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
     );
   }
 
-  const selfTeam = detail.teams[0];
-  const otherSum = detail.teams.slice(1).reduce(
+  const teams = detail.teams ?? [];
+  const selfTeam = teams[0];
+  if (!selfTeam) {
+    return (
+      <div className="m-4 space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
+        <p className="font-medium text-destructive">对局明细数据不完整</p>
+        <p className="break-all text-xs text-muted-foreground">缺少队伍信息</p>
+        <Button size="sm" variant="outline" onClick={() => detailQ.refetch()}>
+          <RotateCcw className="mr-1 h-3 w-3" />
+          重试
+        </Button>
+      </div>
+    );
+  }
+  const otherSum = teams.slice(1).reduce(
     (acc, t) => ({
-      kills: acc.kills + t.kills,
-      gold: acc.gold + t.gold,
-      damage: acc.damage + t.damage,
+      kills: acc.kills + (t.kills ?? 0),
+      gold: acc.gold + (t.gold ?? 0),
+      damage: acc.damage + (t.damage ?? 0),
     }),
     { kills: 0, gold: 0, damage: 0 },
   );
   const toneOf = (win: boolean): Tone =>
     detail.remake ? "remake" : win ? "win" : "loss";
+  // 多队伍（竞技场）不按两队胜负取反着色
+  const multiTeam = teams.length > 2 || !!detail.arena;
   const selfTone = TONE_TEXT[toneOf(selfTeam.win)];
-  const otherTone = TONE_TEXT[toneOf(!selfTeam.win)];
+  const otherTone = multiTeam
+    ? TONE_TEXT["remake"]
+    : TONE_TEXT[toneOf(!selfTeam.win)];
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -318,7 +336,7 @@ function PlayerRowView({ p, ranked, tone, maxDamage, maxGold, badge }: RowProps)
   const tag = hash >= 0 ? p.name.slice(hash) : "";
   const rankText = rankedDisplay(p, ranked);
   const hasRank = rankText !== "未定级";
-  const slots = Array.from({ length: 7 }, (_, i) => p.items[i] ?? 0);
+  const slots = Array.from({ length: 7 }, (_, i) => (p.items?.[i] ?? 0));
   const puuid = p.puuid?.trim() ?? "";
 
   /** 点名称：新标签展示该玩家战绩（同 puuid 仅激活） */
@@ -434,10 +452,10 @@ function PlayerRowView({ p, ranked, tone, maxDamage, maxGold, badge }: RowProps)
               p.dmgRatio >= 1 ? "text-good-fg" : "text-destructive",
             )}
           >
-            {p.dmgRatio.toFixed(1)}
+            {Number.isFinite(p.dmgRatio) ? p.dmgRatio.toFixed(1) : "—"}
           </span>
         </TooltipTrigger>
-        <TooltipContent>伤转 {p.dmgRatio.toFixed(2)} · 伤害/本组均伤</TooltipContent>
+        <TooltipContent>伤转 {Number.isFinite(p.dmgRatio) ? p.dmgRatio.toFixed(2) : "—"} · 伤害/本组均伤</TooltipContent>
       </Tooltip>
 
       {/* 装备：7 固定槽位 */}
@@ -451,7 +469,7 @@ function PlayerRowView({ p, ranked, tone, maxDamage, maxGold, badge }: RowProps)
         )}
       </div>
 
-      <span className="tnum text-right text-[15px] font-bold">{p.rating.toFixed(1)}</span>
+      <span className="tnum text-right text-[15px] font-bold">{Number.isFinite(p.rating) ? p.rating.toFixed(1) : "—"}</span>
     </div>
   );
 }

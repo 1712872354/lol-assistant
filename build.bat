@@ -15,7 +15,9 @@ set "PROJECT=%~dp0"
 if "%PROJECT:~-1%"=="\" set "PROJECT=%PROJECT:~0,-1%"
 set "WAILS=%USERPROFILE%\go\bin\wails.exe"
 set "NSIS_DIR=%LOCALAPPDATA%\tauri\NSIS"
-set "TOOL_DIR=E:\idea\LOL\.tools"
+rem Prefer repo-local .tools; do not hardcode drive letters.
+set "TOOL_DIR=%PROJECT%\..\\.tools"
+if not exist "%PROJECT%\..\\.tools\pnpm.cmd" if exist "%PROJECT%\.tools\pnpm.cmd" set "TOOL_DIR=%PROJECT%\.tools"
 set "OUT_DIR=%PROJECT%\build\bin"
 set "DIST_DIR=%PROJECT%\dist"
 
@@ -58,7 +60,16 @@ rem ---- copy artifacts to dist\ -----------------------------------
 echo [2/3] Copy artifacts to dist\ ...
 if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
 copy /y "%OUT_DIR%\lol-assistant-amd64-installer.exe" "%DIST_DIR%\" >nul 2>nul
+copy /y "%OUT_DIR%\LOLAssistant*.exe" "%DIST_DIR%\" >nul 2>nul
 copy /y "%OUT_DIR%\LOL*.exe" "%DIST_DIR%\" >nul 2>nul
+
+rem Verify at least one exe landed in dist
+set "FOUND="
+for %%F in ("%DIST_DIR%\*.exe") do set "FOUND=1"
+if not defined FOUND (
+  echo [ERROR] No exe copied to dist. Check build output above.
+  goto :fail
+)
 
 echo [3/3] Done. dist\ contents:
 echo.

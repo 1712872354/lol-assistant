@@ -99,7 +99,11 @@ export function UpdateDialog() {
               size="sm"
               variant="outline"
               className="h-8 gap-1.5"
-              onClick={() => window.open(info.releaseUrl, "_blank")}
+              onClick={() => {
+                const u = info.releaseUrl;
+                if (!u || !/^https:\/\//i.test(u)) return;
+                window.open(u, "_blank", "noopener,noreferrer");
+              }}
             >
               <ExternalLink className="h-3.5 w-3.5" />
               发布页

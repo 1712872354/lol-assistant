@@ -43,6 +43,12 @@ jobs:
       - name: Go vet
         run: go vet ./...
 
+      - name: Go test
+        run: go test ./... -count=1
+
+      - name: Go test race
+        run: go test ./... -race -count=1
+
       - name: Ensure project.nsi UTF-8 BOM
         shell: pwsh
         run: |

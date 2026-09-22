@@ -2,6 +2,23 @@
 
 本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions `generate_release_notes` 补充提交列表）。
 
+## [v1.0.3] - 2026-09-22
+
+### Security
+- 更新器：setupURL 白名单、强制 SHA256、官方 checksums、随机临时文件、`/D=` 净化
+- SGP 默认校验证书；LCU 路径规范化；PlatformID/puuid 注入面收敛
+- CI 增加 `go test` / `-race` 门禁
+
+### Fixed
+- 战绩明细多标签视角串数据；对局刷新竞态；明细空值守卫
+- WS 节流补发最新帧；懒初始化锁；lockfile 密码含冒号
+- 竞技场/多队伍不再截断 5 槽；跳页上限；事件订阅 cleanup
+- 窗口与安装包中文名乱码：产物统一 ASCII `LOLAssistant.exe`
+
+### Changed
+- `build.bat` 可移植；卸载仅在确认安装目录时递归删除
+- 根级 Error Boundary；配置 SetConfig 串行写入
+
 ## [v1.0.2] - 2026-09-22
 
 ### 安装
@@ -116,10 +133,6 @@ Get-FileHash .\LOLAssistant-Setup-1.0.0.exe -Algorithm SHA256
 - 仅腾讯国服 SGP 补数完整；其它服以 LCU 为准
 
 ---
-
-## [Unreleased]
-
-（下版本条目写这里）
 
 ## [v0.1.4] - 2026-09-22
 

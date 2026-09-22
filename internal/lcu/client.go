@@ -5,6 +5,7 @@ package lcu
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -24,6 +25,9 @@ var (
 
 // ErrPathDenied 路径不在白名单内
 var ErrPathDenied = errors.New("api path not allowed")
+
+// maxResponseBytes LCU 响应体上限（防异常大包打爆内存）
+const maxResponseBytes = 16 << 20
 
 // allowedAPIPrefixes 前端/服务层可调用的 LCU API 路径前缀白名单。
 // 仅保留两页功能所需前缀（战绩/对局信息），其余一律拒绝，收敛攻击面。
@@ -75,21 +79,53 @@ func AuthHeader(token string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte("riot:"+token))
 }
 
-// AllowedPath API 路径白名单校验（纯函数，可测）：先剥离 query 再做前缀匹配
+// AllowedPath API 路径白名单校验（纯函数，可测）：先剥离 query、规范化路径，再做前缀匹配。
+// 规范化可拒绝 /lol-game-data/../ 等穿越形态。
 func AllowedPath(path string) bool {
 	p := path
 	if i := strings.IndexByte(p, '?'); i >= 0 {
 		p = p[:i]
 	}
-	if !strings.HasPrefix(p, "/") {
+	if p == "" || !strings.HasPrefix(p, "/") {
+		return false
+	}
+	// 拒绝编码穿越与点段
+	if strings.Contains(p, "%2e") || strings.Contains(p, "%2E") || strings.Contains(p, "\\") {
+		return false
+	}
+	clean := pathClean(p)
+	if clean == "" || !strings.HasPrefix(clean, "/") {
+		return false
+	}
+	// 规范化后若与原路径差异含 ".." 语义，clean 已消除；仍要求 clean 不含残留 ".."
+	if strings.Contains(clean, "..") {
 		return false
 	}
 	for _, prefix := range allowedAPIPrefixes {
-		if strings.HasPrefix(p, prefix) {
+		if strings.HasPrefix(clean, prefix) {
 			return true
 		}
 	}
 	return false
+}
+
+// pathClean 规范化 URL 路径（等价 path.Clean，但保持 POSIX 语义，避免 Windows 反斜杠）
+func pathClean(p string) string {
+	parts := strings.Split(p, "/")
+	out := make([]string, 0, len(parts))
+	for _, seg := range parts {
+		switch seg {
+		case "", ".":
+			continue
+		case "..":
+			if len(out) > 0 {
+				out = out[:len(out)-1]
+			}
+		default:
+			out = append(out, seg)
+		}
+	}
+	return "/" + strings.Join(out, "/")
 }
 
 func (c *Client) url(path string) string {
@@ -102,6 +138,11 @@ func (c *Client) url(path string) string {
 // Do 执行 LCU 请求：白名单校验 → Basic 认证 → 传输层错误重试。
 // 返回 HTTP 状态码与响应 body；非 2xx 状态码不重试，body 交上层解析。
 func (c *Client) Do(method, path string, body []byte) (int, []byte, error) {
+	return c.DoContext(context.Background(), method, path, body)
+}
+
+// DoContext 同 Do，但支持取消/超时。
+func (c *Client) DoContext(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
 	if !AllowedPath(path) {
 		return 0, nil, fmt.Errorf("%w: %s", ErrPathDenied, path)
 	}
@@ -116,7 +157,7 @@ func (c *Client) Do(method, path string, body []byte) (int, []byte, error) {
 		if body != nil {
 			reader = bytes.NewReader(body)
 		}
-		req, err := http.NewRequest(method, u, reader)
+		req, err := http.NewRequestWithContext(ctx, method, u, reader)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -134,8 +175,11 @@ func (c *Client) Do(method, path string, body []byte) (int, []byte, error) {
 			}
 			continue
 		}
-		data, _ := io.ReadAll(resp.Body)
+		data, rerr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 		_ = resp.Body.Close()
+		if rerr != nil {
+			return resp.StatusCode, data, fmt.Errorf("read body: %w", rerr)
+		}
 		return resp.StatusCode, data, nil
 	}
 	return 0, nil, fmt.Errorf("lcu request failed after %d attempts: %w", clientMaxRetries, lastErr)

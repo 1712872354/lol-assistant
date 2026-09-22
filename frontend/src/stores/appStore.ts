@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { callAppStrict } from "@/lib/backend";
 import {
   DEFAULT_CONFIG,
   type AppConfig,
@@ -30,6 +31,9 @@ interface AppState {
   patchConfig: (p: Partial<AppConfig>) => void;
 }
 
+/** SetConfig 串行队列：防连点主题/分页时后发先至覆盖 */
+let configWriteChain: Promise<void> = Promise.resolve();
+
 export const useAppStore = create<AppState>((set) => ({
   activeView: "history",
   setActiveView: (activeView) => set({ activeView }),
@@ -40,12 +44,20 @@ export const useAppStore = create<AppState>((set) => ({
     applyTheme(config.theme);
     set({ config });
   },
-  patchConfig: (p) =>
+  patchConfig: (p) => {
     set((s) => {
       const config = { ...s.config, ...p };
       applyTheme(config.theme);
       return { config };
-    }),
+    });
+    const next = useAppStore.getState().config;
+    configWriteChain = configWriteChain
+      .then(() => callAppStrict("SetConfig", next))
+      .then(() => undefined)
+      .catch((e) => {
+        console.error("[appStore] SetConfig failed:", e);
+      });
+  },
 }));
 
 /** 跟随系统主题变化 */

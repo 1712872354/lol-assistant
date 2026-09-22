@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { callApp } from "@/lib/backend";
 import type { AppConfig, ThemeMode } from "@/lib/types";
 import { useAppStore } from "@/stores/appStore";
 import { useGameinfoStore } from "@/stores/gameinfoStore";
@@ -27,13 +26,11 @@ export function SettingsView() {
   const [clientPathDraft, setClientPathDraft] = useState<string | null>(null);
 
   const patch = (p: Partial<AppConfig>) => {
+    // patchConfig 内部串行持久化；失败仅打日志，UI 保持乐观
     patchConfig(p);
-    void callApp("SetConfig", { ...useAppStore.getState().config }).then(() => {
-      // 近况场数/并发热更新后立刻按新配置重拉对局页
-      if (p.pageSize !== undefined || p.apiConcurrency !== undefined) {
-        void useGameinfoStore.getState().refresh();
-      }
-    });
+    if (p.pageSize !== undefined || p.apiConcurrency !== undefined) {
+      void useGameinfoStore.getState().refresh();
+    }
   };
 
   return (

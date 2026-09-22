@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -107,18 +108,94 @@ func (c *Checker) Check() (*Info, error) {
 	return info, nil
 }
 
-// DownloadAndInstall 下载 Setup 安装包 → SHA256 校验 → 拉起安装器
+// unwrapMirrors 剥掉国内镜像前缀，得到原始 URL 字符串。
+func unwrapMirrors(raw string) string {
+	s := strings.TrimSpace(raw)
+	for _, p := range []string{"https://ghfast.top/", "https://mirror.ghproxy.com/"} {
+		if strings.HasPrefix(s, p) {
+			s = strings.TrimPrefix(s, p)
+		}
+	}
+	return s
+}
+
+// toOfficialGitHub 仅当原始地址是 https://github.com/... 时返回，否则空串。
+func toOfficialGitHub(raw string) string {
+	s := unwrapMirrors(raw)
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Hostname(), "github.com") {
+		return ""
+	}
+	return s
+}
+
+// isAllowedSetupURL 仅允许本仓库 GitHub Release 资产（可经登记镜像前缀代理）。
+func isAllowedSetupURL(raw string) bool {
+	s := unwrapMirrors(raw)
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Hostname(), "github.com") {
+		return false
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	prefix := "/" + RepoOwner + "/" + RepoName + "/releases/download/"
+	if !strings.HasPrefix(u.Path, prefix) {
+		return false
+	}
+	if strings.Contains(u.Path, "..") {
+		return false
+	}
+	return true
+}
+
+func isSHA256Hex(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// DownloadAndInstall 下载 Setup 安装包 → 强制 SHA256 校验 → 拉起安装器。
+// setupURL 仅允许本仓库 Release 资产；sha256Hex 为空一律拒绝（防未校验包提权执行）。
 func (c *Checker) DownloadAndInstall(setupURL, sha256Hex string) (string, error) {
 	if setupURL == "" {
 		return "", fmt.Errorf("缺少安装包地址")
 	}
+	if !isAllowedSetupURL(setupURL) {
+		return "", fmt.Errorf("安装包地址不在允许列表")
+	}
+	want := strings.ToLower(strings.TrimSpace(sha256Hex))
+	if want == "" {
+		return "", fmt.Errorf("缺少 SHA256，拒绝安装未校验安装包")
+	}
+	if !isSHA256Hex(want) {
+		return "", fmt.Errorf("SHA256 格式无效")
+	}
 	c.emit(Progress{Stage: "downloading", Percent: 0, Message: "开始下载安装包"})
 
 	tmpDir := filepath.Join(os.TempDir(), "lol-assistant-update")
-	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return "", err
 	}
-	dst := filepath.Join(tmpDir, "LOL助手-Setup.exe")
+	// 随机文件名，降低 TOCTOU/固定路径预埋风险
+	out, err := os.CreateTemp(tmpDir, "setup-*.exe")
+	if err != nil {
+		return "", err
+	}
+	dst := out.Name()
+	_ = out.Close()
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.Remove(dst)
+		}
+	}()
 
 	if err := c.download(setupURL, dst); err != nil {
 		c.emit(Progress{Stage: "error", Message: "下载失败: " + err.Error()})
@@ -130,13 +207,17 @@ func (c *Checker) DownloadAndInstall(setupURL, sha256Hex string) (string, error)
 		c.emit(Progress{Stage: "error", Message: "读取文件失败"})
 		return "", err
 	}
-	want := strings.ToLower(strings.TrimSpace(sha256Hex))
 	c.emit(Progress{Stage: "verifying", Percent: 95, Message: "校验完整性"})
-	if want != "" && want != sum {
-		_ = os.Remove(dst)
+	if want != sum {
 		msg := fmt.Sprintf("SHA256 不匹配\n期望 %s\n实际 %s", want, sum)
 		c.emit(Progress{Stage: "error", Message: msg})
 		return "", fmt.Errorf("sha256 mismatch")
+	}
+	// 校验通过后再读一次，缩小校验与启动之间的替换窗口
+	sum2, err := fileSHA256(dst)
+	if err != nil || sum2 != sum {
+		c.emit(Progress{Stage: "error", Message: "校验后文件被篡改"})
+		return "", fmt.Errorf("file changed after verify")
 	}
 
 	c.emit(Progress{Stage: "launching", Percent: 100, Message: "启动安装程序"})
@@ -145,6 +226,7 @@ func (c *Checker) DownloadAndInstall(setupURL, sha256Hex string) (string, error)
 		c.emit(Progress{Stage: "error", Message: "启动安装失败: " + err.Error()})
 		return "", err
 	}
+	ok = true
 	msg := "安装程序已启动"
 	if installDir != "" {
 		msg = "安装程序已启动（沿用目录 " + installDir + "）"
@@ -155,12 +237,33 @@ func (c *Checker) DownloadAndInstall(setupURL, sha256Hex string) (string, error)
 
 func (c *Checker) fetchRelease() (*ghRelease, error) {
 	var lastErr error
+	var fromMirror *ghRelease
 	for _, u := range apiURLCandidates() {
 		rel, err := c.getRelease(u)
-		if err == nil {
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		// 官方 API 结果直接采用
+		if strings.HasPrefix(u, "https://api.github.com/") {
 			return rel, nil
 		}
-		lastErr = err
+		// 镜像结果：尽量与官方 API 交叉比对 tag/资产名，不一致则丢弃镜像
+		if off, err := c.getRelease("https://api.github.com/repos/" + RepoOwner + "/" + RepoName + "/releases/latest"); err == nil {
+			if rel.TagName == off.TagName && len(rel.Assets) == len(off.Assets) {
+				return off, nil
+			}
+			// 镜像与官方不一致 → 以官方为准
+			return off, nil
+		}
+		if fromMirror == nil {
+			fromMirror = rel
+		}
+		lastErr = fmt.Errorf("mirror release without official cross-check")
+	}
+	if fromMirror != nil {
+		// 官方完全不可达时仍回落镜像（checksums 仍只信官方，空哈希会拒装）
+		return fromMirror, nil
 	}
 	return nil, fmt.Errorf("获取最新版本失败: %w", lastErr)
 }
@@ -199,31 +302,29 @@ func buildInfo(rel *ghRelease, current string) *Info {
 		PubDate:        rel.PublishedAt.Format(time.RFC3339),
 		ReleaseURL:     rel.HTMLURL,
 	}
+	var setupName string
 	for _, a := range rel.Assets {
 		n := strings.ToLower(a.Name)
 		switch {
 		case strings.Contains(n, "setup") || strings.Contains(n, "installer") || strings.HasSuffix(n, "-setup.exe"):
 			if info.SetupURL == "" {
 				info.SetupURL = a.BrowserDownloadURL
+				setupName = a.Name
 			}
 		case strings.Contains(n, "portable") && strings.HasSuffix(n, ".zip"):
 			if info.PortableURL == "" {
 				info.PortableURL = a.BrowserDownloadURL
 			}
-		case n == "sha256sums.txt" || n == "checksums.txt":
-			if sum, err := parseSumsRemote(a.BrowserDownloadURL, rel.Assets); err == nil {
-				info.SHA256 = sum
-			}
 		}
 	}
-	// 从资产旁的 .sha256 文件兜底
-	if info.SHA256 == "" {
-		for _, a := range rel.Assets {
-			if strings.HasSuffix(strings.ToLower(a.Name), ".sha256") && info.SetupURL != "" &&
-				strings.HasPrefix(strings.ToLower(a.Name), strings.TrimSuffix(strings.ToLower(filepath.Base(info.SetupURL)), filepath.Ext(a.Name))) {
-				if raw, err := fetchText(a.BrowserDownloadURL); err == nil {
-					info.SHA256 = strings.ToLower(strings.Fields(strings.TrimSpace(raw))[0])
-				}
+	// 哈希只信官方 GitHub 上的 SHA256SUMS / .sha256，且按 Setup 文件名精确匹配
+	if setupName != "" {
+		if sum, err := parseSumsFor(setupName, rel.Assets); err == nil {
+			info.SHA256 = sum
+		}
+		if info.SHA256 == "" {
+			if sum, err := parseSidecarSHA(setupName, rel.Assets); err == nil {
+				info.SHA256 = sum
 			}
 		}
 	}
@@ -324,38 +425,80 @@ var (
 	reBlank      = regexp.MustCompile(`\n{3,}`)
 )
 
-// parseSumsRemote 从 SHA256SUMS 文本里找 Setup 资产哈希
-func parseSumsRemote(_ string, assets []ghAsset) (string, error) {
+// parseSumsFor 从官方 GitHub 上的 SHA256SUMS.txt 按 Setup 文件名精确取哈希。
+// 镜像上的 checksums 一律不采信（防同源投毒）。
+func parseSumsFor(setupName string, assets []ghAsset) (string, error) {
+	wantName := strings.ToLower(strings.TrimSpace(setupName))
+	if wantName == "" {
+		return "", fmt.Errorf("setup name empty")
+	}
+	var lastErr error
 	for _, a := range assets {
 		if !strings.EqualFold(a.Name, "SHA256SUMS.txt") && !strings.EqualFold(a.Name, "checksums.txt") {
 			continue
 		}
-		text, err := fetchText(downloadURLCandidates(a.BrowserDownloadURL)[0])
-		if err != nil {
-			// 多镜像重试
-			for _, u := range downloadURLCandidates(a.BrowserDownloadURL)[1:] {
-				text, err = fetchText(u)
-				if err == nil {
-					break
-				}
-			}
+		official := toOfficialGitHub(a.BrowserDownloadURL)
+		if official == "" {
+			lastErr = fmt.Errorf("checksums asset not on official github")
+			continue
 		}
+		text, err := fetchText(official)
 		if err != nil {
-			return "", err
+			lastErr = err
+			continue
 		}
 		for _, line := range strings.Split(text, "\n") {
 			fields := strings.Fields(strings.TrimSpace(line))
 			if len(fields) < 2 {
 				continue
 			}
-			name := strings.TrimPrefix(fields[1], "*")
-			n := strings.ToLower(name)
-			if strings.Contains(n, "setup") || strings.Contains(n, "installer") {
-				return strings.ToLower(fields[0]), nil
+			name := strings.ToLower(strings.TrimPrefix(fields[1], "*"))
+			if name == wantName {
+				sum := strings.ToLower(fields[0])
+				if !isSHA256Hex(sum) {
+					return "", fmt.Errorf("invalid sha256 in checksums")
+				}
+				return sum, nil
 			}
 		}
+		lastErr = fmt.Errorf("no checksum line for %s", setupName)
 	}
-	return "", fmt.Errorf("checksums 中无安装包条目")
+	if lastErr == nil {
+		lastErr = fmt.Errorf("checksums 中无安装包条目")
+	}
+	return "", lastErr
+}
+
+// parseSidecarSHA 从官方 GitHub 上的 <setup>.sha256 旁路文件取哈希。
+func parseSidecarSHA(setupName string, assets []ghAsset) (string, error) {
+	base := strings.ToLower(setupName)
+	baseNoExt := strings.TrimSuffix(base, filepath.Ext(base))
+	for _, a := range assets {
+		n := strings.ToLower(a.Name)
+		if !strings.HasSuffix(n, ".sha256") {
+			continue
+		}
+		if n != base+".sha256" && !strings.HasPrefix(n, baseNoExt) {
+			continue
+		}
+		official := toOfficialGitHub(a.BrowserDownloadURL)
+		if official == "" {
+			continue
+		}
+		raw, err := fetchText(official)
+		if err != nil {
+			continue
+		}
+		fields := strings.Fields(strings.TrimSpace(raw))
+		if len(fields) == 0 {
+			continue
+		}
+		sum := strings.ToLower(fields[0])
+		if isSHA256Hex(sum) {
+			return sum, nil
+		}
+	}
+	return "", fmt.Errorf("no official sidecar sha256")
 }
 
 func fetchText(url string) (string, error) {
@@ -374,6 +517,9 @@ func fetchText(url string) (string, error) {
 	}
 	return string(b), nil
 }
+
+// maxSetupBytes 安装包体积上限（防异常大文件打满磁盘）
+const maxSetupBytes = 200 << 20
 
 func (c *Checker) download(officialURL, dst string) error {
 	var lastErr error
@@ -403,6 +549,9 @@ func (c *Checker) downloadOne(url, dst string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
+	if resp.ContentLength > maxSetupBytes {
+		return fmt.Errorf("install package too large: %d", resp.ContentLength)
+	}
 	out, err := os.Create(dst)
 	if err != nil {
 		return err
@@ -415,6 +564,10 @@ func (c *Checker) downloadOne(url, dst string) error {
 	for {
 		n, rerr := resp.Body.Read(buf)
 		if n > 0 {
+			read += int64(n)
+			if read > maxSetupBytes {
+				return fmt.Errorf("install package too large")
+			}
 			if _, werr := out.Write(buf[:n]); werr != nil {
 				return werr
 			}

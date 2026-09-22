@@ -82,7 +82,14 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
   void totalPages;
 
   useEffect(() => {
-    if (list.length === 0) return;
+    if (list.length === 0) {
+      // 过滤后空列表：清掉残留选中，避免右侧明细与左侧不一致
+      const st = useHistoryStore.getState();
+      if ((st.selections[tab.puuid] ?? null) != null) {
+        st.select(tab.puuid, null);
+      }
+      return;
+    }
     const st = useHistoryStore.getState();
     const cur = st.selections[tab.puuid] ?? null;
     if (cur == null || !list.some((s) => s.gameId === cur)) {
@@ -93,7 +100,8 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
 
   const goto = (p: number) => {
     // hasMore 时允许前往尚未确认的下一页；否则夹到 totalPages-1
-    const max = hasMore ? Math.max(totalPages - 1, p) : Math.max(totalPages - 1, 0);
+    // 上限不得依赖目标页码 p（否则输入 999 会跳到 998）
+    const max = hasMore ? totalPages : Math.max(totalPages - 1, 0);
     const v = Math.min(Math.max(0, p), max);
     if (v !== page) setPage(tab.puuid, v);
   };

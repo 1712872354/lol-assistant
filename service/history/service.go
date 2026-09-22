@@ -270,8 +270,15 @@ func (s *Service) GetMatches(puuid string, page int) (MatchPage, error) {
 	if page < 0 {
 		page = 0
 	}
+	// 防极大 page 乘法溢出为负
+	if page > 1_000_000 {
+		page = 1_000_000
+	}
 	pageSize := s.currentPageSize()
 	beg := page * pageSize
+	if beg < 0 {
+		beg = 0
+	}
 	end := beg + pageSize - 1
 
 	// ── SGP 优先：成功即返回；失败/无凭据静默回退 LCU（SGP 网络失败 ≠ 无战绩）──
@@ -484,6 +491,9 @@ func (s *Service) GetPlayersRanked(summonerIDs []string) ([]RankedInfo, error) {
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
+			// 阶段一同样限流，防 40 个 id 裸并发打爆 LCU
+			release := s.acquire()
+			defer release()
 			canonical := id
 			if !isPuuid(id) {
 				if pu := resolvePuuid(cli, id); pu != "" {

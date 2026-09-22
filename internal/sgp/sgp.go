@@ -14,11 +14,13 @@
 package sgp
 
 import (
-	"crypto/tls"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -29,13 +31,26 @@ const sgpPort = 21019
 // clientPlatform X-Riot-ClientPlatform 请求头（LCU 命令行同源值）
 const clientPlatform = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiDQp9"
 
-// httpCli SGP 请求专用客户端：腾讯自签证书需跳过校验；禁用系统代理防劫持
+// maxBodyBytes SGP 响应体上限
+const maxBodyBytes = 16 << 20
+
+// rePlatformID PlatformID 仅允许字母数字下划线连字符
+var rePlatformID = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// httpCli SGP 请求专用客户端：默认校验证书（国服 SGP 为正式域名）；禁用系统代理防劫持。
+// 单元测试可替换为跳过校验的 httptest 客户端。
 var httpCli = &http.Client{
 	Timeout: 8 * time.Second,
 	Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // 腾讯 SGP 自签证书
-		Proxy:           nil,
+		Proxy: nil,
 	},
+}
+
+// SetHTTPClient 供测试注入（生产勿调用）
+func SetHTTPClient(c *http.Client) {
+	if c != nil {
+		httpCli = c
+	}
 }
 
 // knownHosts PlatformID → SGP 网关完整地址（取自 Akari builtin.ts 2026-07 服务器表）。
@@ -56,9 +71,10 @@ var knownHosts = map[string]string{
 
 // Host 由 LCU 命令行 PlatformID 推导 SGP 网关地址。
 // 优先查 knownHosts；未命中按 https://{lowercase}-sgp.lol.qq.com:21019 兜底。
-// 返回空串表示无法确定区域（调用方应跳过 SGP）。
+// platformID 强制字符白名单，防 URL 注入。返回空串表示无法确定区域（调用方应跳过 SGP）。
 func Host(platformID string) string {
-	if platformID == "" {
+	platformID = strings.TrimSpace(platformID)
+	if platformID == "" || !rePlatformID.MatchString(platformID) {
 		return ""
 	}
 	if h, ok := knownHosts[strings.ToUpper(platformID)]; ok {
@@ -97,7 +113,7 @@ func FetchRankedStats(host, puuid, token string) (*RankedStats, error) {
 	if host == "" || puuid == "" || token == "" {
 		return nil, fmt.Errorf("sgp: missing host/puuid/token")
 	}
-	body, err := sgpGet(fmt.Sprintf("%s/leagues-ledge/v2/rankedStats/puuid/%s", host, puuid), token)
+	body, err := sgpGet(fmt.Sprintf("%s/leagues-ledge/v2/rankedStats/puuid/%s", host, url.PathEscape(puuid)), token)
 	if err != nil {
 		return nil, err
 	}
@@ -123,13 +139,17 @@ func FetchMatchHistory(host, puuid, token string, startIndex, count int) ([]byte
 		count = 20
 	}
 	u := fmt.Sprintf("%s/match-history-query/v1/products/lol/player/%s/SUMMARY?startIndex=%d&count=%d",
-		host, puuid, startIndex, count)
+		host, url.PathEscape(puuid), startIndex, count)
 	return sgpGet(u, token)
 }
 
 // sgpGet SGP GET 请求公共路径：Bearer 认证 + ClientPlatform 头，非 2xx 返回错误。
 func sgpGet(url, token string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	return sgpGetContext(context.Background(), url, token)
+}
+
+func sgpGetContext(ctx context.Context, url, token string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +162,10 @@ func sgpGet(url, token string) ([]byte, error) {
 		return nil, fmt.Errorf("sgp request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, rerr := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	if rerr != nil {
+		return nil, fmt.Errorf("sgp read body: %w", rerr)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("sgp http %d", resp.StatusCode)
 	}

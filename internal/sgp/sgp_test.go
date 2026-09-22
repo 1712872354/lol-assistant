@@ -18,6 +18,8 @@ func TestHost(t *testing.T) {
 		"BGP2":   "https://bgp2-k8s-sgp.lol.qq.com:21019",
 		"XYZ999": "https://xyz999-sgp.lol.qq.com:21019", // 未命中映射按 lowercase 兜底
 		"":       "",
+		"a/b":    "",
+		"x.y":    "",
 	}
 	for in, want := range cases {
 		if got := Host(in); got != want {
@@ -35,7 +37,8 @@ func TestQueueEntryDiv(t *testing.T) {
 	}
 }
 
-// newTestServer 构造 SGP leagues-ledge TLS 测试服务器，返回 host 与请求记录指针
+// newTestServer 构造 SGP leagues-ledge TLS 测试服务器，返回 host 与请求记录指针。
+// 注入 srv.Client()（信任自签证书），生产 httpCli 保持完整 TLS 校验。
 func newTestServer(t *testing.T, handler http.HandlerFunc) (string, *[]string) {
 	t.Helper()
 	var requests []string
@@ -44,6 +47,9 @@ func newTestServer(t *testing.T, handler http.HandlerFunc) (string, *[]string) {
 		handler(w, r)
 	}))
 	t.Cleanup(srv.Close)
+	prev := httpCli
+	SetHTTPClient(srv.Client())
+	t.Cleanup(func() { SetHTTPClient(prev) })
 	u, _ := url.Parse(srv.URL)
 	port64, _ := strconv.ParseUint(u.Port(), 10, 16)
 	return fmt.Sprintf("https://127.0.0.1:%d", port64), &requests

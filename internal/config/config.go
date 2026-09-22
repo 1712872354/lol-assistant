@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -107,12 +108,36 @@ func sanitize(c Config) Config {
 		c.PageSize = d.PageSize
 	}
 	// 对局页聚合并发仅开放 2/5/10 三挡，旧值（4/6/8 等）归一到默认 5
+	if c.ApiConcurrency < 1 || c.ApiConcurrency > 32 {
+		c.ApiConcurrency = d.ApiConcurrency
+	}
+	// 对局页聚合并发仅开放 2/5/10 三档，旧值（4/6/8 等）归一到默认 5
 	switch c.ApiConcurrency {
 	case 2, 5, 10:
 	default:
 		c.ApiConcurrency = d.ApiConcurrency
 	}
+	// ClientPath 拒绝 UNC/设备路径，防 NTLM 凭据外泄
+	c.ClientPath = sanitizeClientPath(c.ClientPath)
 	return c
+}
+
+// sanitizeClientPath 仅接受本地绝对盘符路径；UNC/相对/空一律清空（走注册表发现）。
+func sanitizeClientPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	if strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, `//`) {
+		return ""
+	}
+	if len(p) < 3 || p[1] != ':' || (p[2] != '\\' && p[2] != '/') {
+		return ""
+	}
+	if strings.ContainsAny(p, `<>|"?*`) {
+		return ""
+	}
+	return strings.TrimRight(p, `\/`)
 }
 
 // Get 读取当前配置快照

@@ -737,22 +737,27 @@ func (s *Service) fromLive(cli lcuAPI, self lcu.ConnStatus) (ally, enemy []playe
 	}
 	// 兜底：team 字段不可用导致 10 人挤单侧（回归：游戏中敌方 0 人）→ 按列表序对半分
 	if len(ally) == 10 && len(enemy) == 0 {
-		ally, enemy = ally[:5], ally[5:]
+		mid := len(ally) / 2
+		ally, enemy = ally[:mid], ally[mid:]
 	} else if len(enemy) == 10 && len(ally) == 0 {
-		enemy, ally = enemy[:5], enemy[5:]
+		mid := len(enemy) / 2
+		enemy, ally = enemy[:mid], enemy[mid:]
 	}
 	return ally, enemy
 }
 
 // ── 补数与汇总 ──
 
-// buildSlots 补数（标识互查 → 段位批量 → 近况并发）并补齐 5 槽。
+// buildSlots 补数（标识互查 → 段位批量 → 近况并发）并补齐槽位。
+// 常规 5 人队 pad 到 5；竞技场/多队伍按 refs 实际人数，避免 refs[:5] 截断丢人。
 // filter 为近况队列口径（空 = 全部；统计与列表同源同口径）。
 func (s *Service) buildSlots(cli lcuAPI, refs []playerRef, filter []int) []PlayerSlot {
-	slots := make([]PlayerSlot, 0, 5)
+	want := 5
 	if len(refs) > 5 {
-		refs = refs[:5]
+		want = len(refs)
 	}
+	slots := make([]PlayerSlot, 0, want)
+	// 不再硬截 5：多队伍模式保留全部 refs
 
 	// ① 标识互查（并发受限）：标识不全即查——live 常缺 icon/sid，champ-select 缺名，老版本 live 缺 puuid
 	sem := make(chan struct{}, s.currentConcurrency())
@@ -935,6 +940,18 @@ func (s *Service) fetchCareer(puuid string, filter []int) career {
 	s.careerMu.Lock()
 	if s.careerCache == nil {
 		s.careerCache = map[string]careerEntry{}
+	}
+	// 达上限先清过期，仍超则整表重置，防长会话无界增长
+	if len(s.careerCache) >= 512 {
+		now := time.Now()
+		for k, e := range s.careerCache {
+			if now.Sub(e.at) >= careerTTL {
+				delete(s.careerCache, k)
+			}
+		}
+		if len(s.careerCache) >= 512 {
+			s.careerCache = map[string]careerEntry{}
+		}
 	}
 	s.careerCache[key] = careerEntry{at: time.Now(), c: c}
 	s.careerMu.Unlock()

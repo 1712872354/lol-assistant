@@ -95,18 +95,30 @@ export const useGameinfoStore = create<GameinfoState>((set, get) => ({
     })),
 
   refresh: async () => {
+    // 请求序号：仅最新一次 refresh 可写回，防旧响应覆盖新数据
+    const rid = ++refreshSeq;
     set({ loading: true });
-    const v = await callApp<GameinfoViewState>(
-      "GetGameflowState",
-      queueFilterArgs(get().queueKey),
-    );
-    if (v && Array.isArray(v.teams) && v.teams.length > 0) {
-      const view = normalizeView(v);
-      set({ view, loading: false });
-      scheduleInGameRetry(view);
-    } else {
-      retryCount = 0;
-      set({ view: defaultView("None"), loading: false });
+    try {
+      const v = await callApp<GameinfoViewState>(
+        "GetGameflowState",
+        queueFilterArgs(get().queueKey),
+      );
+      if (rid !== refreshSeq) return;
+      if (v && Array.isArray(v.teams) && v.teams.length > 0) {
+        const view = normalizeView(v);
+        set({ view, loading: false });
+        scheduleInGameRetry(view);
+      } else if (v) {
+        // 调用成功返回空/默认视图
+        retryCount = 0;
+        set({ view: normalizeView(v), loading: false });
+      } else {
+        // 调用失败：保留上一帧有效数据，仅结束 loading
+        set({ loading: false });
+      }
+    } catch {
+      if (rid !== refreshSeq) return;
+      set({ loading: false });
     }
   },
 }));
@@ -116,6 +128,7 @@ export const useGameinfoStore = create<GameinfoState>((set, get) => ({
 let bound = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let retryCount = 0;
+let refreshSeq = 0;
 
 /**
  * 游戏内数据未就绪（GameStart 初段花名册/Live 未齐）时 3s 自动重试；

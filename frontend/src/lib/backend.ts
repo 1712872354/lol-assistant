@@ -83,15 +83,40 @@ export async function callAppStrict<T>(
   return (app[fn] as (...a: unknown[]) => Promise<T>)(...args);
 }
 
-/** 订阅 Go → JS 事件；Wails 环境外为空操作 */
+/** 按事件名维护的监听器集合（Wails EventsOff(name) 会拆掉同名全部监听，需自管） */
+const eventListeners = new Map<string, Set<(...data: unknown[]) => void>>();
+
+/** 订阅 Go → JS 事件；cleanup 只移除自身，不影响同名其它监听器 */
 export function onAppEvent(
   name: string,
   callback: (...data: unknown[]) => void,
 ): () => void {
   const rt = getRuntime();
   if (!rt) return () => {};
-  rt.EventsOn(name, callback);
-  return () => rt.EventsOff?.(name);
+  let set = eventListeners.get(name);
+  if (!set) {
+    set = new Set();
+    eventListeners.set(name, set);
+    rt.EventsOn(name, (...data: unknown[]) => {
+      for (const cb of eventListeners.get(name) ?? []) {
+        try {
+          cb(...data);
+        } catch (e) {
+          console.error(`[backend] listener ${name} error:`, e);
+        }
+      }
+    });
+  }
+  set.add(callback);
+  return () => {
+    const s = eventListeners.get(name);
+    if (!s) return;
+    s.delete(callback);
+    if (s.size === 0) {
+      eventListeners.delete(name);
+      rt.EventsOff?.(name);
+    }
+  };
 }
 
 /* ── 窗口控制（自绘标题栏按钮） ─────────────────────────────────── */

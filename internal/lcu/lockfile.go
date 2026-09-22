@@ -31,32 +31,46 @@ var registryKeyPaths = []string{
 }
 
 // ParseLockfile 解析 lockfile 内容（纯函数，可测）。
+// 格式 name:pid:port:password:protocol；password 可能含冒号，故对前三段与末段精确切分。
 // 字段不足 / pid、port 非法时返回 false（lockfile 未就绪的短暂竞态，由下轮轮询重试）。
 func ParseLockfile(content string) (LockInfo, bool) {
-	parts := strings.Split(strings.TrimSpace(content), ":")
-	if len(parts) < 4 {
+	s := strings.TrimSpace(content)
+	// name:pid:port:password[:protocol] — password 可能含 ':'，按前 3 个 + 可选末段 protocol 切分
+	head := strings.SplitN(s, ":", 4)
+	if len(head) < 4 {
 		return LockInfo{}, false
 	}
-	pid64, err := strconv.ParseInt(parts[1], 10, 32)
+	name, pidStr, portStr, rest := head[0], head[1], head[2], head[3]
+	password := rest
+	protocol := ""
+	// 若 rest 中还有 ':' 且末段是纯协议名，则最后冒号切 protocol
+	if i := strings.LastIndex(rest, ":"); i >= 0 {
+		maybeProto := rest[i+1:]
+		if maybeProto != "" && !strings.ContainsAny(maybeProto, `/\`) {
+			// protocol 通常为 http/https/wss；仅当末段无路径特征时切开
+			if strings.EqualFold(maybeProto, "http") || strings.EqualFold(maybeProto, "https") ||
+				strings.EqualFold(maybeProto, "wss") || strings.EqualFold(maybeProto, "ws") {
+				password = rest[:i]
+				protocol = maybeProto
+			}
+		}
+	}
+	pid64, err := strconv.ParseInt(pidStr, 10, 32)
 	if err != nil || pid64 <= 0 {
 		return LockInfo{}, false
 	}
-	port64, err := strconv.ParseUint(parts[2], 10, 16) // 端口无符号 16 位（>32767 合法，实测 LCU 常见 5xxxx）
+	port64, err := strconv.ParseUint(portStr, 10, 16) // 端口无符号 16 位（>32767 合法，实测 LCU 常见 5xxxx）
 	if err != nil || port64 == 0 {
 		return LockInfo{}, false
 	}
-	if parts[3] == "" {
+	if password == "" {
 		return LockInfo{}, false
 	}
-	protocol := ""
-	if len(parts) >= 5 {
-		protocol = parts[4]
-	}
 	return LockInfo{
-		Name:     parts[0],
+		Name:     name,
 		PID:      int32(pid64),
 		Port:     uint16(port64),
-		Password: parts[3],
+		Password: password,
 		Protocol: protocol,
 	}, true
 }

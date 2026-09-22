@@ -33,10 +33,11 @@
 ## Include the wails tools
 ####
 # 明确产品标识与可执行文件名（须在 wails_tools.nsh 之前 define，避免被默认值覆盖）
+# 文件名用 ASCII 防乱码；展示名/注册表键可中文
 !define INFO_PROJECTNAME "LOL助手"
 !define INFO_COMPANYNAME "LOL助手"
 !define INFO_PRODUCTNAME "LOL助手"
-!define PRODUCT_EXECUTABLE "LOL助手.exe"
+!define PRODUCT_EXECUTABLE "LOLAssistant.exe"
 !define UNINST_KEY_NAME "LOL助手"
 
 !include "wails_tools.nsh"
@@ -76,6 +77,7 @@ ManifestDPIAware true
 !insertmacro MUI_UNPAGE_INSTFILES # Uinstalling page
 
 !insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
+!insertmacro MUI_LANGUAGE "SimpChinese"
 
 ## The following two statements can be used to sign the installer and the uninstaller. The path to the binaries are provided in %1
 #!uninstfinalize 'signtool --file "%1"'
@@ -183,7 +185,13 @@ Section "uninstall"
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
 
-    RMDir /r $INSTDIR
+    ; 仅当 $INSTDIR 像本产品安装目录时才递归删除，防误装到过宽路径后卸载误删
+    ${If} $INSTDIR != ""
+    ${AndIf} ${FileExists} "$INSTDIR\${PRODUCT_EXECUTABLE}"
+      RMDir /r $INSTDIR
+    ${ElseIf} ${FileExists} "$INSTDIR\uninstall.exe"
+      RMDir /r $INSTDIR
+    ${EndIf}
 
     Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
     Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk"

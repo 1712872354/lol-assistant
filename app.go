@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -157,8 +158,13 @@ func (a *App) onLcuEvent(evt lcu.LcuEvent) {
 	}
 }
 
+// svcMu 保护懒初始化（Wails 绑定可并发进入）
+var svcMu sync.Mutex
+
 // histService 战绩服务访问器（防御 startup 未完成时的绑定调用）
 func (a *App) histService() *history.Service {
+	svcMu.Lock()
+	defer svcMu.Unlock()
 	if a.hist == nil {
 		a.hist = history.New(a.monitor, a.cfg.Get().PageSize, a.cfg.Get().ApiConcurrency)
 		a.hist.SetSGPEnabled(a.cfg.Get().SgpEnabled)
@@ -168,11 +174,17 @@ func (a *App) histService() *history.Service {
 
 // gameService 对局信息服务访问器（防御 startup 未完成时的绑定调用）
 func (a *App) gameService() *gameinfo.Service {
+	svcMu.Lock()
+	defer svcMu.Unlock()
 	if a.game == nil {
 		if a.live == nil {
 			a.live = liveclient.New()
 		}
-		a.game = gameinfo.New(a.monitor, a.histService(), a.live, a.cfg.Get().ApiConcurrency)
+		if a.hist == nil {
+			a.hist = history.New(a.monitor, a.cfg.Get().PageSize, a.cfg.Get().ApiConcurrency)
+			a.hist.SetSGPEnabled(a.cfg.Get().SgpEnabled)
+		}
+		a.game = gameinfo.New(a.monitor, a.hist, a.live, a.cfg.Get().ApiConcurrency)
 	}
 	return a.game
 }
@@ -278,10 +290,14 @@ func (a *App) DownloadAndInstallUpdate(setupURL, sha256Hex string) (string, erro
 		go func() {
 			time.Sleep(900 * time.Millisecond)
 			slog.Warn("update: force exit process for installer")
+			// 兜底退出前尽量落盘配置与停监控，减少 os.Exit 丢数据
+			_ = a.cfg.Save()
+			a.monitor.Stop()
 			os.Exit(0)
 		}()
 		time.Sleep(150 * time.Millisecond) // 让 RPC 响应回到前端
 		a.forceQuit.Store(true)
+		_ = a.cfg.Save()
 		go tray.Stop()
 		if a.ctx != nil {
 			runtime.Quit(a.ctx)

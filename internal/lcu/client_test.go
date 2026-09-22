@@ -33,6 +33,9 @@ func TestAllowedPath(t *testing.T) {
 		"/riotclient/ux-commands",          // 白名单外前缀
 		"lol-summoner/v1/current-summoner", // 缺前导斜杠
 		"",                                 // 空路径
+		"/lol-game-data/assets/../../../etc/passwd", // 路径穿越
+		"/lol-game-data/assets/..%2f..%2f",
+		`/lol-game-data\assets\1.png`,
 	}
 	for _, p := range denied {
 		if AllowedPath(p) {

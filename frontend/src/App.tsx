@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { KeepAlive } from "@/components/layout/KeepAlive";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TitleBar } from "@/components/layout/TitleBar";
@@ -51,14 +52,16 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={200}>
-        <div className="flex h-screen flex-col overflow-hidden">
-          <TitleBar />
-          <div className="flex min-h-0 flex-1">
-            <Sidebar />
-            <KeepAlive />
+        <ErrorBoundary>
+          <div className="flex h-screen flex-col overflow-hidden">
+            <TitleBar />
+            <div className="flex min-h-0 flex-1">
+              <Sidebar />
+              <KeepAlive />
+            </div>
+            <UpdateDialog />
           </div>
-          <UpdateDialog />
-        </div>
+        </ErrorBoundary>
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -63,19 +63,21 @@ func parseWampEvent(text []byte) (LcuEvent, bool) {
 	return evt, true
 }
 
-// throttle 帧合并器：窗口内仅放行首帧，中间帧丢弃（时钟可注入，便于测试）
+// throttle 帧合并器：leading 放行首帧；窗口内后续帧缓存为 pending，窗口到期由 takePending 补发最新帧（trailing）。
+// 避免「最后一帧落在窗口内被丢弃」导致 UI 停在旧状态。
 type throttle struct {
 	mu       sync.Mutex
 	interval time.Duration
 	last     time.Time
 	now      func() time.Time
+	pending  *LcuEvent
 }
 
 func newThrottle(interval time.Duration) *throttle {
 	return &throttle{interval: interval, now: time.Now}
 }
 
-// allow 判断当前帧是否放行
+// allow 判断当前帧是否立即放行；不放行时调用方应 stash。
 func (t *throttle) allow() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -85,6 +87,31 @@ func (t *throttle) allow() bool {
 	}
 	t.last = now
 	return true
+}
+
+// stash 保存窗口内最新帧（覆盖旧 pending）
+func (t *throttle) stash(evt LcuEvent) {
+	t.mu.Lock()
+	e := evt
+	t.pending = &e
+	t.mu.Unlock()
+}
+
+// takePending 若窗口已过期则取出并放行 pending 帧
+func (t *throttle) takePending() (LcuEvent, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.pending == nil {
+		return LcuEvent{}, false
+	}
+	now := t.now()
+	if now.Sub(t.last) < t.interval {
+		return LcuEvent{}, false
+	}
+	evt := *t.pending
+	t.pending = nil
+	t.last = now
+	return evt, true
 }
 
 // wsRunner WS 连接管理器：同一时刻至多一个活动连接循环
@@ -179,9 +206,11 @@ func (r *wsRunner) session(ctx context.Context, creds Credentials, onEvent func(
 		return conn.SetReadDeadline(time.Now().Add(wsReadIdle))
 	})
 
-	// ctx 取消时关闭连接，中断阻塞读
+	// ctx 取消时关闭连接，中断阻塞读；session 结束时 cancel，避免 goroutine 泄漏
+	sessCtx, sessCancel := context.WithCancel(ctx)
+	defer sessCancel()
 	go func() {
-		<-ctx.Done()
+		<-sessCtx.Done()
 		_ = conn.Close()
 	}()
 
@@ -193,7 +222,7 @@ func (r *wsRunner) session(ctx context.Context, creds Credentials, onEvent func(
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-sessCtx.Done():
 				return
 			case <-pingStop:
 				return
@@ -206,21 +235,52 @@ func (r *wsRunner) session(ctx context.Context, creds Credentials, onEvent func(
 	}()
 
 	sessThrottle := newThrottle(champSelectThrottle)
+	var emitMu sync.Mutex
+	emit := func(evt LcuEvent) {
+		if onEvent == nil {
+			return
+		}
+		emitMu.Lock()
+		onEvent(evt)
+		emitMu.Unlock()
+	}
+	// trailing 补发：独立协程周期冲掉窗口内缓存的最新帧
+	go func() {
+		ticker := time.NewTicker(champSelectThrottle / 2)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-sessCtx.Done():
+				if evt, ok := sessThrottle.takePending(); ok {
+					emit(evt)
+				}
+				return
+			case <-ticker.C:
+				if evt, ok := sessThrottle.takePending(); ok {
+					emit(evt)
+				}
+			}
+		}
+	}()
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
+			if evt, ok := sessThrottle.takePending(); ok {
+				emit(evt)
+			}
 			return true, err
 		}
 		evt, ok := parseWampEvent(msg)
 		if !ok || !uriWatched(evt.URI) {
 			continue
 		}
-		// 选人会话每秒多帧，500ms 节流合并（丢中间帧，保最新态）
-		if strings.HasPrefix(evt.URI, PathChampSelectSession) && !sessThrottle.allow() {
-			continue
+		// 选人会话每秒多帧，500ms 节流合并（leading + trailing 保最新态）
+		if strings.HasPrefix(evt.URI, PathChampSelectSession) {
+			if !sessThrottle.allow() {
+				sessThrottle.stash(evt)
+				continue
+			}
 		}
-		if onEvent != nil {
-			onEvent(evt)
-		}
+		emit(evt)
 	}
 }

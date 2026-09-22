@@ -2,6 +2,19 @@ package lcu
 
 import "testing"
 
+func TestParseLockfile_PasswordWithColon(t *testing.T) {
+	info, ok := ParseLockfile("LeagueClient:123:54321:ab:cd:ef:https")
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if info.Password != "ab:cd:ef" {
+		t.Fatalf("password = %q", info.Password)
+	}
+	if info.Protocol != "https" {
+		t.Fatalf("protocol = %q", info.Protocol)
+	}
+}
+
 func TestParseLockfile_Valid(t *testing.T) {
 	info, ok := ParseLockfile("LeagueClient:12345:54321:AbCdEfGh123:https")
 	if !ok {
