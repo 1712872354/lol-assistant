@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Download, ExternalLink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUpdateStore } from "@/stores/updateStore";
@@ -9,8 +10,22 @@ export function UpdateDialog() {
   const installing = useUpdateStore((s) => s.installing);
   const progress = useUpdateStore((s) => s.progress);
   const error = useUpdateStore((s) => s.error);
+  const quitHint = useUpdateStore((s) => s.quitHint);
   const setDialogOpen = useUpdateStore((s) => s.setDialogOpen);
   const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall);
+
+  // done/error 后允许关闭；下载中才锁定
+  const stage = progress?.stage;
+  const canClose = !installing || stage === "done" || stage === "error";
+
+  useEffect(() => {
+    if (!canClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDialogOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canClose, setDialogOpen]);
 
   if (!open || !info?.hasUpdate) return null;
 
@@ -29,7 +44,7 @@ export function UpdateDialog() {
             type="button"
             className="text-muted-foreground hover:text-foreground"
             onClick={() => setDialogOpen(false)}
-            disabled={installing}
+            disabled={!canClose}
             aria-label="关闭"
           >
             <X className="h-4 w-4" />
@@ -63,6 +78,12 @@ export function UpdateDialog() {
           <p className="mt-3 break-all text-[11px] text-destructive">{error}</p>
         ) : null}
 
+        {quitHint ? (
+          <p className="mt-3 rounded-md bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+            {quitHint}
+          </p>
+        ) : null}
+
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button
             size="sm"
@@ -88,7 +109,7 @@ export function UpdateDialog() {
             size="sm"
             variant="ghost"
             className="h-8"
-            disabled={installing}
+            disabled={!canClose}
             onClick={() => setDialogOpen(false)}
           >
             稍后

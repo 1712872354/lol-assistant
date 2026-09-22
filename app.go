@@ -17,13 +17,14 @@ import (
 
 // App 是前端绑定层：参数校验 + 调用服务 + 事件桥接，不承载业务逻辑。
 type App struct {
-	ctx     context.Context
-	cfg     *config.Store
-	monitor *lcu.Monitor
-	hist    *history.Service   // M2 历史战绩服务（startup 构造，注入 pageSize/apiConcurrency）
-	live    *liveclient.Client // M3 Live Client 数据端 :2999（fail-soft，仅游戏中可达）
-	game    *gameinfo.Service  // M3 对局信息聚合服务
-	version string            // 构建注入（ldflags -X main.version=）
+	ctx       context.Context
+	cfg       *config.Store
+	monitor   *lcu.Monitor
+	hist      *history.Service   // M2 历史战绩服务（startup 构造，注入 pageSize/apiConcurrency）
+	live      *liveclient.Client // M3 Live Client 数据端 :2999（fail-soft，仅游戏中可达）
+	game      *gameinfo.Service  // M3 对局信息聚合服务
+	version   string             // 构建注入（ldflags -X main.version=）
+	forceQuit bool               // 强制退出：更新安装/托盘退出时绕过 closeToTray 拦截
 }
 
 // NewApp 构造应用实例（wails.Run 前调用，ctx 于 startup 注入）
@@ -71,14 +72,19 @@ func (a *App) showMainWindow() {
 
 // quitFromTray 托盘「退出」：收起托盘后结束应用
 func (a *App) quitFromTray() {
+	a.forceQuit = true
 	tray.Stop()
 	if a.ctx != nil {
 		runtime.Quit(a.ctx)
 	}
 }
 
-// beforeClose 拦截关窗：closeToTray=true 时隐藏到托盘并阻止退出
+// beforeClose 拦截关窗：closeToTray=true 时隐藏到托盘并阻止退出；
+// forceQuit=true（更新安装/主动退出）时不拦截，保证进程真正退出以释放文件锁。
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	if a.forceQuit {
+		return false
+	}
 	if a.cfg.Get().CloseToTray {
 		runtime.WindowHide(ctx)
 		slog.Info("window hidden to tray")
@@ -261,8 +267,9 @@ func (a *App) DownloadAndInstallUpdate(setupURL, sha256Hex string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	// 安装器启动后退出本进程，便于覆盖写入
+	// 安装器启动后强制退出本进程（绕过 closeToTray），便于覆盖写入
 	go func() {
+		a.forceQuit = true
 		tray.Stop()
 		if a.ctx != nil {
 			runtime.Quit(a.ctx)
@@ -293,11 +300,12 @@ func (a *App) WindowClose() {
 	if a.ctx == nil {
 		return
 	}
-	if a.cfg.Get().CloseToTray {
+	if !a.forceQuit && a.cfg.Get().CloseToTray {
 		runtime.WindowHide(a.ctx)
 		slog.Info("window hidden to tray")
 		return
 	}
+	a.forceQuit = true
 	tray.Stop()
 	runtime.Quit(a.ctx)
 }

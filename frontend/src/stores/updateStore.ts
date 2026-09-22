@@ -27,6 +27,8 @@ interface UpdateState {
   progress: UpdateProgress | null;
   error: string | null;
   dialogOpen: boolean;
+  /** done/error 后 2 秒仍未退出时的提示（安装包需手动运行） */
+  quitHint: string | null;
   setDialogOpen: (v: boolean) => void;
   loadVersion: () => Promise<void>;
   check: (opts?: { silent?: boolean }) => Promise<UpdateInfo | null>;
@@ -41,6 +43,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   progress: null,
   error: null,
   dialogOpen: false,
+  quitHint: null,
 
   setDialogOpen: (v) => set({ dialogOpen: v }),
 
@@ -90,13 +93,23 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     try {
       await callApp<string>("DownloadAndInstallUpdate", info.setupUrl, info.sha256 ?? "");
       set({
+        installing: false,
         progress: { stage: "done", percent: 100, message: "安装程序已启动，即将退出" },
       });
+      // 2 秒内未退出则提示手动运行安装包；弹窗保持可关闭
+      window.setTimeout(() => {
+        const s = useUpdateStore.getState();
+        if (s.progress?.stage === "done") {
+          set({
+            quitHint: "应用未自动退出。请关闭本程序后，运行安装包完成更新。",
+          });
+        }
+      }, 2000);
     } catch (e) {
       set({
         installing: false,
         error: e instanceof Error ? e.message : String(e),
-        progress: null,
+        progress: { stage: "error", percent: 0, message: "安装启动失败" },
       });
     } finally {
       off();
