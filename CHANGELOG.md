@@ -2,6 +2,32 @@
 
 本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions `generate_release_notes` 补充提交列表）。
 
+## [v1.0.2] - 2026-09-22
+
+### 安装
+
+| 包 | 说明 |
+|----|------|
+| `LOLAssistant-Setup-1.0.2.exe` | NSIS 安装包（推荐） |
+| `LOLAssistant-Portable-1.0.2.zip` | 绿色版，解压即用 |
+| `SHA256SUMS.txt` | 校验哈希 |
+
+Windows x64 · 需 WebView2 运行时
+
+### 修复
+
+- **本地 `build.bat` 中文乱码/命令被截断**：脚本改为纯 ASCII，cmd 不再按字节切断多字节字符
+- **本地打包 `Bad text encoding`**：`build.bat` 打包前自动为 `project.nsi` 补 UTF-8 BOM（与 CI 一致）
+
+### 安装校验
+
+```powershell
+Get-FileHash .\LOLAssistant-Setup-1.0.2.exe -Algorithm SHA256
+# 与 SHA256SUMS.txt 中对应行比对
+```
+
+---
+
 ## [v1.0.1] - 2026-09-22
 
 ### 安装
