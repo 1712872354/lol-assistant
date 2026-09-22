@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { MatchDetail, PlayerRow, RankedInfo } from "@/lib/types";
+import type { MatchDetail, PlayerRow, RankedInfo, SummonerResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useHistoryStore, type HistoryTab } from "@/stores/historyStore";
 import { errMsg, fetchMatchDetail, fetchPlayersRanked } from "./api";
@@ -312,12 +312,29 @@ interface RowProps {
 
 /** 玩家行：头像区 + 名称/段位分行呼吸 + KDA 注脚 + 千分位数值与相对条 + 装备 + 评分 */
 function PlayerRowView({ p, ranked, tone, maxDamage, maxGold, badge }: RowProps) {
+  const openSummoner = useHistoryStore((s) => s.openSummoner);
   const hash = p.name.indexOf("#");
   const base = hash >= 0 ? p.name.slice(0, hash) : p.name;
   const tag = hash >= 0 ? p.name.slice(hash) : "";
   const rankText = rankedDisplay(p, ranked);
   const hasRank = rankText !== "未定级";
   const slots = Array.from({ length: 7 }, (_, i) => p.items[i] ?? 0);
+  const puuid = p.puuid?.trim() ?? "";
+
+  /** 点名称：新标签展示该玩家战绩（同 puuid 仅激活） */
+  const openPlayerTab = () => {
+    if (!puuid) return;
+    const s: SummonerResult = {
+      puuid,
+      gameName: base,
+      tagLine: tag ? tag.slice(1) : "",
+      displayName: tag ? `${base}${tag}` : base,
+      profileIconId: p.profileIconId ?? 0,
+      summonerLevel: 0,
+      summonerId: p.summonerId ?? "",
+    };
+    openSummoner(s, p.isSelf);
+  };
 
   return (
     <div
@@ -343,18 +360,25 @@ function PlayerRowView({ p, ranked, tone, maxDamage, maxGold, badge }: RowProps)
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2">
-            <span
+            <button
+              type="button"
+              onClick={openPlayerTab}
+              disabled={!puuid}
+              title={puuid ? "新标签查看该玩家战绩" : undefined}
               className={cn(
-                "truncate text-[14px] leading-tight",
+                "min-w-0 truncate text-left text-[14px] leading-tight",
                 p.isSelf ? "font-bold" : "font-medium",
+                puuid && "cursor-pointer underline-offset-2 hover:text-primary hover:underline",
+                !puuid && "cursor-default",
               )}
-              title={base}
             >
               {base}
-            </span>
-            {tag ? (
-              <span className="shrink-0 text-[12px] leading-tight text-muted-foreground">{tag}</span>
-            ) : null}
+              {tag ? (
+                <span className="ml-1 shrink-0 text-[12px] leading-tight text-muted-foreground">
+                  {tag}
+                </span>
+              ) : null}
+            </button>
             {badge ? (
               <span
                 className={cn(

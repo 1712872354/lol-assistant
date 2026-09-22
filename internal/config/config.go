@@ -39,7 +39,7 @@ func Default() Config {
 		SchemaVersion:  currentSchema,
 		Theme:          ThemeSystem,
 		PageSize:       20,
-		ApiConcurrency: 4,
+		ApiConcurrency: 5,
 		SgpEnabled:     true,
 		CloseToTray:    true,
 	}
@@ -106,7 +106,10 @@ func sanitize(c Config) Config {
 	if c.PageSize < 5 || c.PageSize > 50 {
 		c.PageSize = d.PageSize
 	}
-	if c.ApiConcurrency < 2 || c.ApiConcurrency > 8 {
+	// 对局页聚合并发仅开放 2/5/10 三挡，旧值（4/6/8 等）归一到默认 5
+	switch c.ApiConcurrency {
+	case 2, 5, 10:
+	default:
 		c.ApiConcurrency = d.ApiConcurrency
 	}
 	return c

@@ -46,6 +46,7 @@ func (a *App) startup(ctx context.Context) {
 	a.hist.SetConcurrency(a.cfg.Get().ApiConcurrency)
 	a.live = liveclient.New()
 	a.game = gameinfo.New(a.monitor, a.hist, a.live, a.cfg.Get().ApiConcurrency)
+	a.game.SetCareerLimit(a.cfg.Get().PageSize)
 	a.monitor.Start(ctx, a.onConnChange, a.onLcuEvent)
 	a.startTray()
 	slog.Info("app started", "configPath", a.cfg.Path())
@@ -194,6 +195,7 @@ func (a *App) SetConfig(c config.Config) error {
 	a.histService().SetPageSize(a.cfg.Get().PageSize)
 	a.histService().SetSGPEnabled(a.cfg.Get().SgpEnabled) // SGP 数据源开关热更新
 	a.histService().SetConcurrency(a.cfg.Get().ApiConcurrency)
+	a.gameService().SetCareerLimit(a.cfg.Get().PageSize) // 对局页近况场数 = pageSize
 	a.gameService().SetConcurrency(a.cfg.Get().ApiConcurrency)
 	// closeToTray 托盘未落地前仅持久化，见 WindowClose 注释
 	return nil

@@ -169,10 +169,10 @@ const champIndexTTL = 10 * time.Minute
 // careerTTL 近况补数缓存时长：事件驱动刷新（选人阶段高频 WS）下保护 LCU/SGP
 const careerTTL = 90 * time.Second
 
-// careerLimit 每人近况展示场数（最近 20 场，统计口径同源）
-const careerLimit = 20
+// defaultCareerLimit 每人近况默认场数（config.pageSize 可热更新为 10/20/30）
+const defaultCareerLimit = 20
 
-// careerScanPages 队列过滤时最多扫描页数（≈40 场窗口内凑 20 场同队列；凑满即停）
+// careerScanPages 队列过滤时最多扫描页数（凑满 careerLimit 即停）
 const careerScanPages = 4
 
 // careerEntry 近况缓存条目（含 hidden 结果，避免反复打隐藏档案）
@@ -195,17 +195,40 @@ type Service struct {
 	champIndex map[string]int // lower(alias|name) → championId
 
 	careerMu    sync.Mutex
-	careerCache map[string]careerEntry // puuid → 近况（90s TTL）
+	careerLimit int
+	careerCache map[string]careerEntry // puuid|filter → 近况（90s TTL）
 }
 
-// SetConcurrency 配置变更时同步聚合并发上限（config.apiConcurrency，2–8）
+// SetConcurrency 配置变更时同步聚合并发上限（config.apiConcurrency，三挡 2/5/10）
 func (s *Service) SetConcurrency(n int) {
-	if n < 2 || n > 8 {
+	if n != 2 && n != 5 && n != 10 {
 		return
 	}
 	s.concMu.Lock()
 	s.concurrency = n
 	s.concMu.Unlock()
+}
+
+// SetCareerLimit 配置变更时同步每人近况场数（config.pageSize，10/20/30），并清空近况缓存
+func (s *Service) SetCareerLimit(n int) {
+	if n < 5 || n > 50 {
+		return
+	}
+	s.careerMu.Lock()
+	if s.careerLimit != n {
+		s.careerLimit = n
+		s.careerCache = map[string]careerEntry{}
+	}
+	s.careerMu.Unlock()
+}
+
+func (s *Service) currentCareerLimit() int {
+	s.careerMu.Lock()
+	defer s.careerMu.Unlock()
+	if s.careerLimit <= 0 {
+		return defaultCareerLimit
+	}
+	return s.careerLimit
 }
 
 // currentConcurrency 读取当前并发上限
@@ -215,10 +238,10 @@ func (s *Service) currentConcurrency() int {
 	return s.concurrency
 }
 
-// New 构造聚合服务（live 注入 *liveclient.Client；concurrency≤0 取 4）
+// New 构造聚合服务（live 注入 *liveclient.Client；concurrency 非法取 5）
 func New(mon *lcu.Monitor, hist *history.Service, live liveAPI, concurrency int) *Service {
-	if concurrency <= 0 {
-		concurrency = 4
+	if concurrency != 2 && concurrency != 5 && concurrency != 10 {
+		concurrency = 5
 	}
 	return &Service{
 		cliFn: func() (lcuAPI, error) {
@@ -774,7 +797,7 @@ func (s *Service) buildSlots(cli lcuAPI, refs []playerRef, filter []int) []Playe
 		}
 	}
 
-	// ③ 近况并发（每人 GetMatches 前 8 场）
+	// ③ 近况并发（每人 GetMatches，条数 = config.pageSize）
 	careers := make([]career, len(refs))
 	for i := range refs {
 		if refs[i].puuid == "" {
@@ -897,7 +920,7 @@ func (s *Service) fillIdentity(cli lcuAPI, ref *playerRef) {
 	}
 }
 
-// fetchCareer 近 20 场摘要（生涯隐藏/无数据 → hidden；90s 缓存抑制事件风暴；缓存键含队列口径）
+// fetchCareer 近 N 场摘要（N=config.pageSize；生涯隐藏/无数据 → hidden；90s 缓存抑制事件风暴）
 func (s *Service) fetchCareer(puuid string, filter []int) career {
 	key := puuid + "|" + fmt.Sprint(filter)
 	s.careerMu.Lock()
@@ -922,7 +945,8 @@ func (s *Service) fetchCareer(puuid string, filter []int) career {
 // 多页扫描凑满 careerLimit 场同队列（最多 careerScanPages 页），凑满/翻完/首页失败即停；
 // 首页失败 = 生涯隐藏或无记录（hidden）；成功但该类型 0 场 = 空列表（前端"暂无近战数据"）。
 func (s *Service) loadCareer(puuid string, filter []int) career {
-	out := make([]RecentMatch, 0, careerLimit)
+	limit := s.currentCareerLimit()
+	out := make([]RecentMatch, 0, limit)
 	for page := 0; page < careerScanPages; page++ {
 		p, err := s.hist.GetMatches(puuid, page)
 		if err != nil {
@@ -946,7 +970,7 @@ func (s *Service) loadCareer(puuid string, filter []int) career {
 				Assists:      m.Assists,
 				ChampionID:   m.ChampionID,
 			})
-			if len(out) >= careerLimit {
+			if len(out) >= limit {
 				return career{recent: out}
 			}
 		}

@@ -7,6 +7,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { callApp } from "@/lib/backend";
 import type { AppConfig, ThemeMode } from "@/lib/types";
 import { useAppStore } from "@/stores/appStore";
+import { useGameinfoStore } from "@/stores/gameinfoStore";
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -27,7 +28,12 @@ export function SettingsView() {
 
   const patch = (p: Partial<AppConfig>) => {
     patchConfig(p);
-    void callApp("SetConfig", { ...useAppStore.getState().config });
+    void callApp("SetConfig", { ...useAppStore.getState().config }).then(() => {
+      // 近况场数/并发热更新后立刻按新配置重拉对局页
+      if (p.pageSize !== undefined || p.apiConcurrency !== undefined) {
+        void useGameinfoStore.getState().refresh();
+      }
+    });
   };
 
   return (
@@ -64,7 +70,7 @@ export function SettingsView() {
           <CardTitle className="text-sm">战绩</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Row label="每页战绩数">
+          <Row label="战绩数量" hint="对局页每人近况展示与统计场数（10/20/30），默认 20">
             <ToggleGroup
               type="single"
               size="sm"
@@ -80,7 +86,7 @@ export function SettingsView() {
             </ToggleGroup>
           </Row>
           <Separator />
-          <Row label="API 并发数" hint="对局信息页 10 人聚合的并发上限（2–8），默认 4">
+          <Row label="API 并发数" hint="对局信息页 10 人聚合的并发上限（2/5/10），默认 5">
             <ToggleGroup
               type="single"
               size="sm"
@@ -88,7 +94,7 @@ export function SettingsView() {
               onValueChange={(v) => v && patch({ apiConcurrency: Number(v) })}
               className="rounded-md border bg-card p-0.5"
             >
-              {["2", "4", "6", "8"].map((n) => (
+              {["2", "5", "10"].map((n) => (
                 <ToggleGroupItem key={n} value={n}>
                   {n}
                 </ToggleGroupItem>

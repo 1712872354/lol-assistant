@@ -2,6 +2,38 @@
 
 本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions `generate_release_notes` 补充提交列表）。
 
+## [v1.0.0] - 2026-09-22
+
+### 安装
+
+| 包 | 说明 |
+|----|------|
+| `LOLAssistant-Setup-1.0.0.exe` | NSIS 安装包（推荐） |
+| `LOLAssistant-Portable-1.0.0.zip` | 绿色版，解压即用 |
+| `SHA256SUMS.txt` | 校验哈希 |
+
+Windows x64 · 需 WebView2 运行时
+
+### 修复
+
+- **战绩数量真正生效**：对局页每人近况展示与统计场数跟随设置（10/20/30），不再写死 20；修改后清近况缓存并立即刷新对局页
+- **API 并发改为 2 / 5 / 10 三挡**（默认 5）；旧配置 4/6/8 自动归一到 5
+
+### 改进
+
+- 设置文案澄清：「每页战绩数」→「战绩数量」，明确作用于对局页近况
+- 明细页点击玩家名可在战绩页新标签查看该玩家战绩
+- wailsjs 补齐更新相关绑定（CheckUpdate / DownloadAndInstallUpdate / GetAppVersion）
+
+### 安装校验
+
+```powershell
+Get-FileHash .\LOLAssistant-Setup-1.0.0.exe -Algorithm SHA256
+# 与 SHA256SUMS.txt 中对应行比对
+```
+
+---
+
 ## [v0.1.0] - 首个公开版本
 
 ### 安装

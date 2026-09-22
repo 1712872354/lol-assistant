@@ -589,3 +589,36 @@ export namespace parser {
 
 }
 
+export namespace update {
+	
+	export class Info {
+	    hasUpdate: boolean;
+	    currentVersion: string;
+	    version: string;
+	    notes: string;
+	    pubDate: string;
+	    setupUrl: string;
+	    portableUrl: string;
+	    sha256: string;
+	    releaseUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Info(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hasUpdate = source["hasUpdate"];
+	        this.currentVersion = source["currentVersion"];
+	        this.version = source["version"];
+	        this.notes = source["notes"];
+	        this.pubDate = source["pubDate"];
+	        this.setupUrl = source["setupUrl"];
+	        this.portableUrl = source["portableUrl"];
+	        this.sha256 = source["sha256"];
+	        this.releaseUrl = source["releaseUrl"];
+	    }
+	}
+
+}
+

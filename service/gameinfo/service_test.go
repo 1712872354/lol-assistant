@@ -651,3 +651,48 @@ func TestPhaseLabelCN(t *testing.T) {
 		}
 	}
 }
+
+/* ── 设置热更新：近况场数 / 并发三挡 ──────────────────────────── */
+
+func TestSetCareerLimitAndConcurrency(t *testing.T) {
+	svc := newTestService(&fakeLCU{}, &fakeHist{}, &fakeLive{})
+
+	svc.SetCareerLimit(10)
+	if svc.currentCareerLimit() != 10 {
+		t.Fatalf("careerLimit = %d, want 10", svc.currentCareerLimit())
+	}
+	svc.SetCareerLimit(3) // 非法值不生效
+	if svc.currentCareerLimit() != 10 {
+		t.Fatalf("careerLimit after invalid set = %d", svc.currentCareerLimit())
+	}
+
+	for _, n := range []int{2, 5, 10} {
+		svc.SetConcurrency(n)
+		if svc.currentConcurrency() != n {
+			t.Fatalf("concurrency = %d, want %d", svc.currentConcurrency(), n)
+		}
+	}
+	svc.SetConcurrency(8) // 旧挡位忽略
+	if svc.currentConcurrency() != 10 {
+		t.Fatalf("concurrency after invalid set = %d", svc.currentConcurrency())
+	}
+}
+
+func TestLoadCareerRespectsLimit(t *testing.T) {
+	sums := make([]parser.MatchSummary, 30)
+	for i := range sums {
+		sums[i] = parser.MatchSummary{QueueID: 420, QueueShort: "排位", Win: true, ChampionID: 1}
+	}
+	h := &fakeHist{matches: map[string][]parser.MatchSummary{"P1": sums}}
+	svc := newTestService(&fakeLCU{}, h, &fakeLive{})
+	svc.SetCareerLimit(10)
+	c := svc.loadCareer("P1", nil)
+	if len(c.recent) != 10 {
+		t.Fatalf("recent = %d, want 10", len(c.recent))
+	}
+	svc.SetCareerLimit(30)
+	c = svc.loadCareer("P1", nil)
+	if len(c.recent) != 30 {
+		t.Fatalf("recent = %d, want 30", len(c.recent))
+	}
+}

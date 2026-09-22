@@ -56,8 +56,8 @@ func NewWithClient(
 	if pageSize < 5 || pageSize > 50 {
 		pageSize = 20
 	}
-	if concurrency < 1 {
-		concurrency = 4
+	if concurrency < 2 || concurrency > 10 {
+		concurrency = 5
 	}
 	return &Service{
 		clientFn:    clientFn,
@@ -76,9 +76,9 @@ func (s *Service) SetSGPEnabled(on bool) {
 	s.sgpMu.Unlock()
 }
 
-// SetConcurrency 配置变更时同步并发闸门容量（config.apiConcurrency，2–8）
+// SetConcurrency 配置变更时同步并发闸门容量（config.apiConcurrency，三挡 2/5/10）
 func (s *Service) SetConcurrency(n int) {
-	if n < 2 || n > 8 {
+	if n != 2 && n != 5 && n != 10 {
 		return
 	}
 	s.semMu.Lock()
