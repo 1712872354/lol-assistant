@@ -43,6 +43,20 @@ jobs:
       - name: Go vet
         run: go vet ./...
 
+      - name: Ensure project.nsi UTF-8 BOM
+        shell: pwsh
+        run: |
+          $path = "build/windows/installer/project.nsi"
+          $bytes = [IO.File]::ReadAllBytes($path)
+          $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+          if (-not $hasBom) {
+            $c = [IO.File]::ReadAllText($path, [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText($path, $c, [Text.UTF8Encoding]::new($true))
+            Write-Output "Added UTF-8 BOM to $path"
+          } else {
+            Write-Output "$path already has UTF-8 BOM"
+          }
+
       - name: Wails build (NSIS)
         run: wails build -platform windows/amd64 -nsis -ldflags "-s -w"
 

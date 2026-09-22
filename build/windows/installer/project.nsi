@@ -1,4 +1,4 @@
-Unicode true
+﻿Unicode true
 
 ####
 ## Please note: Template replacements don't work in this file. They are provided with default defines like
@@ -59,6 +59,7 @@ VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
 ManifestDPIAware true
 
 !include "MUI.nsh"
+!include "LogicLib.nsh"
 
 !define MUI_ICON "..\icon.ico"
 !define MUI_UNICON "..\icon.ico"
@@ -93,13 +94,9 @@ OutFile "..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the inst
 !endif # 默认安装到 Program Files\LOL助手
 ShowInstDetails show # This will always show the installation details.
 
-Function .onInit
-   !insertmacro wails.checkArchitecture
-   !insertmacro DetectPreviousInstallDir
-FunctionEnd
-
 # 识别已安装目录并写入 $INSTDIR（供目录页作为默认值）。
 # 顺序：InstallLocation → DisplayIcon 父目录 → UninstallString 父目录；HKLM 优先，再 HKCU。
+# 注意：!macro 必须在 !insertmacro 之前定义，否则 NSIS 报 macro not found。
 !macro DetectPreviousInstallDir
     SetRegView 64
     StrCpy $R9 ""
@@ -145,6 +142,11 @@ FunctionEnd
         ${EndIf}
     ${EndIf}
 !macroend
+
+Function .onInit
+   !insertmacro wails.checkArchitecture
+   !insertmacro DetectPreviousInstallDir
+FunctionEnd
 
 Section
     !insertmacro wails.setShellContext
