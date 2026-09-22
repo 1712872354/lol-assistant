@@ -149,9 +149,10 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
     void navigator.clipboard?.writeText(tag ? `${base}${tag}` : base);
   };
 
-  const iconId = slot.profileIconId ?? 0;
-  const avatarKind = iconId > 0 ? "profile" : "champion";
-  const avatarId = iconId > 0 ? iconId : (slot.championId ?? 0);
+  // 头像优先本局所选英雄；未选（大厅/未锁定）回退召唤师头像
+  const champId = slot.championId ?? 0;
+  const avatarKind = champId > 0 ? "champion" : "profile";
+  const avatarId = champId > 0 ? champId : (slot.profileIconId ?? 0);
 
   const openDetail = () => {
     const puuid = slot.puuid?.trim();

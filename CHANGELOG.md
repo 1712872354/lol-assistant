@@ -2,6 +2,19 @@
 
 本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions `generate_release_notes` 补充提交列表）。
 
+## [v1.0.4] - 2026-09-22
+
+### 修复
+
+- **对局页头像改为本局所选英雄优先**：选人锁定后 / 游戏中显示所选英雄头像；房间内或未锁定时回退召唤师头像
+
+### 说明
+
+- 本版本包含 [v1.0.3] 全部内容（更新器校验加固、前端竞态修复等）
+- 安装包 `LOLAssistant-Setup-1.0.4.exe` / 绿色版 `LOLAssistant-Portable-1.0.4.zip` / `SHA256SUMS.txt`，Windows x64 · 需 WebView2 运行时
+
+---
+
 ## [v1.0.3] - 2026-09-22
 
 ### Security
