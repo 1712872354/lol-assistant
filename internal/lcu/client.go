@@ -29,6 +29,13 @@ var ErrPathDenied = errors.New("api path not allowed")
 // maxResponseBytes LCU 响应体上限（防异常大包打爆内存）
 const maxResponseBytes = 16 << 20
 
+// maxConcurrent LCU 请求在途并发固定上限（本地客户端脆弱，防打爆；不可配置）。
+// SGP 云端数据源走 internal/sgp 独立 HTTP 客户端，不经此闸门，不限并发。
+const maxConcurrent = 2
+
+// gate LCU 请求并发闸门（包级：跨所有 Client 实例共享）
+var gate = make(chan struct{}, maxConcurrent)
+
 // allowedAPIPrefixes 前端/服务层可调用的 LCU API 路径前缀白名单。
 // 仅保留两页功能所需前缀（战绩/对局信息），其余一律拒绝，收敛攻击面。
 var allowedAPIPrefixes = []string{
@@ -145,6 +152,13 @@ func (c *Client) Do(method, path string, body []byte) (int, []byte, error) {
 func (c *Client) DoContext(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
 	if !AllowedPath(path) {
 		return 0, nil, fmt.Errorf("%w: %s", ErrPathDenied, path)
+	}
+	// 并发闸门：覆盖整个重试循环，防传输层重试放大在途请求
+	select {
+	case gate <- struct{}{}:
+		defer func() { <-gate }()
+	case <-ctx.Done():
+		return 0, nil, ctx.Err()
 	}
 	u := c.url(path)
 	if _, err := url.Parse(u); err != nil {

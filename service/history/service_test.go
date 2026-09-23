@@ -42,7 +42,7 @@ func newTestService(t *testing.T, handler http.Handler, pageSize int) (*Service,
 				SummonerLevel: 300,
 			}
 		},
-		pageSize, 2,
+		pageSize,
 	)
 	return svc, srv
 }
@@ -113,7 +113,7 @@ func TestGetMatches_Errors(t *testing.T) {
 
 	// 未连接
 	offline := NewWithClient(func() (*lcu.Client, bool) { return nil, false },
-		func() lcu.ConnStatus { return lcu.ConnStatus{State: lcu.StateDisconnected} }, 20, 2)
+		func() lcu.ConnStatus { return lcu.ConnStatus{State: lcu.StateDisconnected} }, 20)
 	if _, err := offline.GetMatches("X", 0); err != ErrNotConnected {
 		t.Fatalf("offline error = %v", err)
 	}
@@ -178,7 +178,7 @@ func TestGetSelfSummoner_Enrichment(t *testing.T) {
 
 	// 未登录
 	unauth := NewWithClient(func() (*lcu.Client, bool) { return nil, false },
-		func() lcu.ConnStatus { return lcu.ConnStatus{State: lcu.StateUnauthenticated} }, 20, 2)
+		func() lcu.ConnStatus { return lcu.ConnStatus{State: lcu.StateUnauthenticated} }, 20)
 	if _, err := unauth.GetSelfSummoner(); err == nil || !strings.Contains(err.Error(), "未登录") {
 		t.Fatalf("unauth error = %v", err)
 	}
@@ -411,7 +411,7 @@ func TestNormalizeAssetPath(t *testing.T) {
 
 func TestSetPageSizeBounds(t *testing.T) {
 	svc := NewWithClient(func() (*lcu.Client, bool) { return nil, false },
-		func() lcu.ConnStatus { return lcu.ConnStatus{} }, 20, 2)
+		func() lcu.ConnStatus { return lcu.ConnStatus{} }, 20)
 	svc.SetPageSize(10)
 	if svc.currentPageSize() != 10 {
 		t.Fatalf("pageSize = %d", svc.currentPageSize())
@@ -445,7 +445,7 @@ func newSGPTestService(t *testing.T, handler http.Handler, fetch sgpFetchFn) *Se
 		func() lcu.ConnStatus {
 			return lcu.ConnStatus{State: lcu.StateConnected, Puuid: "PSELF", PlatformId: "GZ100"}
 		},
-		20, 2,
+		20,
 	)
 	svc.SetSGPEnabled(true)
 	svc.sgpFetchFn = fetch
@@ -548,7 +548,7 @@ func TestGetPlayersRanked_SGPFailSoft(t *testing.T) {
 		fetchErr  error
 		wantCalls int
 	}{
-		"网络失败静默降级": {sgpBaseHandler(true), errors.New("sgp timeout"), 1},
+		"网络失败静默降级":   {sgpBaseHandler(true), errors.New("sgp timeout"), 1},
 		"token不可用跳过": {sgpBaseHandler(false), nil, 0},
 	}
 	for name, c := range cases {
@@ -593,11 +593,11 @@ func TestSGPRankedDisplay(t *testing.T) {
 
 func TestIsPuuid(t *testing.T) {
 	cases := map[string]bool{
-		testPuuid:  true,
-		"2001":     false,
+		testPuuid:     true,
+		"2001":        false,
 		"16262047083": false,
-		"PUUID-1":  false, // 过短（测试夹具 id）
-		"":         false,
+		"PUUID-1":     false, // 过短（测试夹具 id）
+		"":            false,
 	}
 	for in, want := range cases {
 		if got := isPuuid(in); got != want {
@@ -780,8 +780,8 @@ func TestGetMatches_SGPTokenRetryThenFallback(t *testing.T) {
 		wantGameID   int64
 	}{
 		"entitlements失败换session重试": {true, nil, 2, 0, 900001},
-		"SGP全败回退LCU":           {true, errors.New("sgp down"), 2, 1, 800001},
-		"单凭据失败直接回退LCU":       {false, errors.New("sgp down"), 1, 1, 800001},
+		"SGP全败回退LCU":               {true, errors.New("sgp down"), 2, 1, 800001},
+		"单凭据失败直接回退LCU":             {false, errors.New("sgp down"), 1, 1, 800001},
 	}
 	for name, c := range cases {
 		var lcuCalls, sgpCalls int
@@ -846,5 +846,79 @@ func TestGetMatches_SGPDisabledNoCall(t *testing.T) {
 	}
 	if len(page.Summaries) != 1 || page.Summaries[0].GameID != 800001 {
 		t.Fatalf("page = %+v", page)
+	}
+}
+
+/* ─── SGP 凭据缓存（对局页 10 人聚合防 token 风暴打爆 LCU 闸门） ─── */
+
+// TestFetchSGPTokens_Cached 验证同会话内双凭据仅首取，后续命中缓存不再打 LCU。
+func TestFetchSGPTokens_Cached(t *testing.T) {
+	var sessionHits, entHits atomic.Int32
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/lol-league-session/v1/league-session-token":
+			sessionHits.Add(1)
+			fmt.Fprint(w, `"sess-tok"`)
+		case "/entitlements/v1/token":
+			entHits.Add(1)
+			fmt.Fprint(w, `{"accessToken":"ent-tok"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	svc := newSGPTestService(t, handler, nil)
+	cli, err := svc.client()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t1 := svc.fetchSGPTokens(cli)
+	t2 := svc.fetchSGPTokens(cli)
+	t3 := svc.fetchSGPTokens(cli)
+
+	if t1.session != "sess-tok" || t1.entitlements != "ent-tok" {
+		t.Fatalf("t1 = %+v", t1)
+	}
+	if t2 != t1 || t3 != t1 {
+		t.Fatalf("cache miss: t2=%+v t3=%+v want %+v", t2, t3, t1)
+	}
+	if s, e := sessionHits.Load(), entHits.Load(); s != 1 || e != 1 {
+		t.Fatalf("token hits session=%d ent=%d, want 1/1（缓存后不重复取）", s, e)
+	}
+}
+
+// TestFetchSGPTokens_FailureNotSticky 验证全败只做短负缓存，过期后重试（不永久卡死 SGP）。
+func TestFetchSGPTokens_FailureNotSticky(t *testing.T) {
+	oldErr := sgpTokenErrTTL
+	sgpTokenErrTTL = 0
+	defer func() { sgpTokenErrTTL = oldErr }()
+
+	var hits atomic.Int32
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/lol-league-session/v1/league-session-token" ||
+			r.URL.Path == "/entitlements/v1/token" {
+			hits.Add(1)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	})
+	svc := newSGPTestService(t, handler, nil)
+	cli, err := svc.client()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if tok := svc.fetchSGPTokens(cli); tok.session != "" || tok.entitlements != "" {
+		t.Fatalf("want empty tokens on failure, got %+v", tok)
+	}
+	first := hits.Load()
+	if first != 2 {
+		t.Fatalf("hits = %d, want 2", first)
+	}
+	// errTTL=0 → 立即过期，应重试而非命中失败缓存
+	if tok := svc.fetchSGPTokens(cli); tok.session != "" {
+		t.Fatalf("want empty tokens, got %+v", tok)
+	}
+	if hits.Load() <= first {
+		t.Fatalf("hits = %d, want > %d（负缓存过期后应重试）", hits.Load(), first)
 	}
 }

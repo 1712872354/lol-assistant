@@ -28,7 +28,7 @@ export function SettingsView() {
   const patch = (p: Partial<AppConfig>) => {
     // patchConfig 内部串行持久化；失败仅打日志，UI 保持乐观
     patchConfig(p);
-    if (p.pageSize !== undefined || p.apiConcurrency !== undefined) {
+    if (p.pageSize !== undefined) {
       void useGameinfoStore.getState().refresh();
     }
   };
@@ -76,22 +76,6 @@ export function SettingsView() {
               className="rounded-md border bg-card p-0.5"
             >
               {["10", "20", "30"].map((n) => (
-                <ToggleGroupItem key={n} value={n}>
-                  {n}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </Row>
-          <Separator />
-          <Row label="API 并发数" hint="对局信息页 10 人聚合的并发上限（2/5/10），默认 5">
-            <ToggleGroup
-              type="single"
-              size="sm"
-              value={String(config.apiConcurrency)}
-              onValueChange={(v) => v && patch({ apiConcurrency: Number(v) })}
-              className="rounded-md border bg-card p-0.5"
-            >
-              {["2", "5", "10"].map((n) => (
                 <ToggleGroupItem key={n} value={n}>
                   {n}
                 </ToggleGroupItem>

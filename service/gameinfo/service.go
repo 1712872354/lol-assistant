@@ -183,12 +183,10 @@ type careerEntry struct {
 
 // Service 对局信息聚合服务
 type Service struct {
-	cliFn       func() (lcuAPI, error)
-	selfFn      func() lcu.ConnStatus
-	hist        histAPI
-	live        liveAPI
-	concMu      sync.RWMutex
-	concurrency int
+	cliFn  func() (lcuAPI, error)
+	selfFn func() lcu.ConnStatus
+	hist   histAPI
+	live   liveAPI
 
 	champMu    sync.Mutex
 	champAt    time.Time
@@ -197,16 +195,6 @@ type Service struct {
 	careerMu    sync.Mutex
 	careerLimit int
 	careerCache map[string]careerEntry // puuid|filter → 近况（90s TTL）
-}
-
-// SetConcurrency 配置变更时同步聚合并发上限（config.apiConcurrency，三挡 2/5/10）
-func (s *Service) SetConcurrency(n int) {
-	if n != 2 && n != 5 && n != 10 {
-		return
-	}
-	s.concMu.Lock()
-	s.concurrency = n
-	s.concMu.Unlock()
 }
 
 // SetCareerLimit 配置变更时同步每人近况场数（config.pageSize，10/20/30），并清空近况缓存
@@ -231,18 +219,9 @@ func (s *Service) currentCareerLimit() int {
 	return s.careerLimit
 }
 
-// currentConcurrency 读取当前并发上限
-func (s *Service) currentConcurrency() int {
-	s.concMu.RLock()
-	defer s.concMu.RUnlock()
-	return s.concurrency
-}
-
-// New 构造聚合服务（live 注入 *liveclient.Client；concurrency 非法取 5）
-func New(mon *lcu.Monitor, hist *history.Service, live liveAPI, concurrency int) *Service {
-	if concurrency != 2 && concurrency != 5 && concurrency != 10 {
-		concurrency = 5
-	}
+// New 构造聚合服务（live 注入 *liveclient.Client）。
+// 并发策略：LCU 请求由 internal/lcu 客户端闸门固定限 2 并发；SGP 战绩不限并发
+func New(mon *lcu.Monitor, hist *history.Service, live liveAPI) *Service {
 	return &Service{
 		cliFn: func() (lcuAPI, error) {
 			c, ok := mon.Client()
@@ -251,10 +230,9 @@ func New(mon *lcu.Monitor, hist *history.Service, live liveAPI, concurrency int)
 			}
 			return c, nil
 		},
-		selfFn:      mon.Status,
-		hist:        hist,
-		live:        live,
-		concurrency: concurrency,
+		selfFn: mon.Status,
+		hist:   hist,
+		live:   live,
 	}
 }
 
@@ -283,9 +261,10 @@ func (s *Service) GetGameflowState(queueFilter []int) (ViewState, error) {
 		if sess, ok := fetchGameflowSession(cli); ok {
 			queueID = sess.queueID()
 			queueLabel = sess.queueName()
-			// 花名册按 puuid/summonerId 对齐，补齐选人条目缺失的名/头像（不新增条目，防盲选泄露）
+			// 花名册按 puuid/summonerId 对齐，补齐选人条目缺失的名/头像
 			one, two := sess.roster(self)
-			enrichFromRoster(ally, one, two)
+			// 己方允许补洞（身份不全被 conv 丢弃 / session 未到齐 5 人）；敌方仍禁止，防盲选泄露
+			ally = backfillFromRoster(ally, one)
 			enrichFromRoster(enemy, one, two)
 		}
 	case "GameStart", "InProgress", "WaitingForStats", "PreEndOfGame", "EndOfGame", "Reconnect":
@@ -587,6 +566,40 @@ func enrichFromRoster(refs []playerRef, teams ...[]playerRef) {
 	}
 }
 
+// backfillFromRoster 花名册补洞：先 enrich 已有条目字段，再把 src 中缺失的己方成员追加回 refs。
+// 选人分支专用（敌方仍走 enrichFromRoster，防盲选泄露）。
+func backfillFromRoster(refs, src []playerRef) []playerRef {
+	enrichFromRoster(refs, src)
+	if len(src) == 0 {
+		return refs
+	}
+	haveP, haveS := map[string]bool{}, map[string]bool{}
+	for _, r := range refs {
+		if r.puuid != "" {
+			haveP[r.puuid] = true
+		}
+		if r.summonerID != "" && r.summonerID != "0" {
+			haveS[r.summonerID] = true
+		}
+	}
+	for _, r := range src {
+		if r.puuid != "" && haveP[r.puuid] {
+			continue
+		}
+		if r.summonerID != "" && r.summonerID != "0" && haveS[r.summonerID] {
+			continue
+		}
+		refs = append(refs, r)
+		if r.puuid != "" {
+			haveP[r.puuid] = true
+		}
+		if r.summonerID != "" && r.summonerID != "0" {
+			haveS[r.summonerID] = true
+		}
+	}
+	return refs
+}
+
 // isSelfMatch 本人判定：puuid 精确匹配优先，回落 gameName#tagLine（忽略大小写）
 func isSelfMatch(puuid, gameName, tag string, self lcu.ConnStatus) bool {
 	if puuid != "" && self.Puuid != "" && puuid == self.Puuid {
@@ -759,8 +772,7 @@ func (s *Service) buildSlots(cli lcuAPI, refs []playerRef, filter []int) []Playe
 	slots := make([]PlayerSlot, 0, want)
 	// 不再硬截 5：多队伍模式保留全部 refs
 
-	// ① 标识互查（并发受限）：标识不全即查——live 常缺 icon/sid，champ-select 缺名，老版本 live 缺 puuid
-	sem := make(chan struct{}, s.currentConcurrency())
+	// ① 标识互查（LCU 并发由 internal/lcu 闸门兜底）：标识不全即查——live 常缺 icon/sid，champ-select 缺名，老版本 live 缺 puuid
 	var wg sync.WaitGroup
 	for i := range refs {
 		incomplete := refs[i].puuid == "" || refs[i].gameName == "" ||
@@ -771,8 +783,6 @@ func (s *Service) buildSlots(cli lcuAPI, refs []playerRef, filter []int) []Playe
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
 			s.fillIdentity(cli, &refs[i])
 		}(i)
 	}
@@ -802,7 +812,7 @@ func (s *Service) buildSlots(cli lcuAPI, refs []playerRef, filter []int) []Playe
 		}
 	}
 
-	// ③ 近况并发（每人 GetMatches，条数 = config.pageSize）
+	// ③ 近况并发（每人 GetMatches，条数 = config.pageSize；SGP 不限并发，LCU 由客户端闸门限 2）
 	careers := make([]career, len(refs))
 	for i := range refs {
 		if refs[i].puuid == "" {
@@ -812,8 +822,6 @@ func (s *Service) buildSlots(cli lcuAPI, refs []playerRef, filter []int) []Playe
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
 			careers[i] = s.fetchCareer(refs[i].puuid, filter)
 		}(i)
 	}

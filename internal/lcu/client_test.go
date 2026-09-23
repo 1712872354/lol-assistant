@@ -2,12 +2,14 @@ package lcu
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestAllowedPath(t *testing.T) {
@@ -115,5 +117,62 @@ func TestClientDo_HttpStatusNotRetried(t *testing.T) {
 	}
 	if hits.Load() != 1 {
 		t.Fatalf("HTTP 500 must not be retried, hits=%d", hits.Load())
+	}
+}
+
+// TestClientDo_ConcurrencyCappedAt2 验证 LCU 请求在途并发固定上限为 2：
+// SGP 云端不经此闸门（走 internal/sgp 独立 HTTP 客户端）。
+func TestClientDo_ConcurrencyCappedAt2(t *testing.T) {
+	var inFlight, maxInFlight atomic.Int32
+	release := make(chan struct{})
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := inFlight.Add(1)
+		for {
+			m := maxInFlight.Load()
+			if n <= m || maxInFlight.CompareAndSwap(m, n) {
+				break
+			}
+		}
+		<-release // 阻塞至测试放行，放大在途窗口
+		inFlight.Add(-1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	u, _ := url.Parse(srv.URL)
+	port64, _ := strconv.ParseUint(u.Port(), 10, 16)
+	cli := NewClient(uint16(port64), "t")
+
+	const n = 10
+	done := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			status, _, err := cli.Get(PathBuildInfo)
+			if err != nil {
+				done <- err
+				return
+			}
+			if status != http.StatusOK {
+				done <- fmt.Errorf("status=%d", status)
+				return
+			}
+			done <- nil
+		}()
+	}
+
+	// 等待闸门填满（2 个在途 + 排队 8 个），给调度留足时间
+	deadline := time.Now().Add(2 * time.Second)
+	for inFlight.Load() < maxConcurrent && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond) // 若无闸门，10 个应已全部在途
+	close(release)
+	for i := 0; i < n; i++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := maxInFlight.Load(); got > maxConcurrent {
+		t.Fatalf("max in-flight = %d, want <= %d", got, maxConcurrent)
 	}
 }

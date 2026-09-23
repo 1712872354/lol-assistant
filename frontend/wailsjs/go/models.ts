@@ -4,7 +4,6 @@ export namespace config {
 	    schemaVersion: number;
 	    theme: string;
 	    pageSize: number;
-	    apiConcurrency: number;
 	    sgpEnabled: boolean;
 	    closeToTray: boolean;
 	    clientPath: string;
@@ -18,7 +17,6 @@ export namespace config {
 	        this.schemaVersion = source["schemaVersion"];
 	        this.theme = source["theme"];
 	        this.pageSize = source["pageSize"];
-	        this.apiConcurrency = source["apiConcurrency"];
 	        this.sgpEnabled = source["sgpEnabled"];
 	        this.closeToTray = source["closeToTray"];
 	        this.clientPath = source["clientPath"];

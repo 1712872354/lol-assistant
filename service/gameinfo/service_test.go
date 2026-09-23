@@ -89,9 +89,8 @@ func newTestService(cli lcuAPI, hist histAPI, live liveAPI) *Service {
 		selfFn: func() lcu.ConnStatus {
 			return lcu.ConnStatus{State: lcu.StateConnected, Puuid: "PSELF"}
 		},
-		hist:        hist,
-		live:        live,
-		concurrency: 2,
+		hist: hist,
+		live: live,
 	}
 }
 
@@ -171,6 +170,73 @@ func TestGetGameflowState_ChampSelect(t *testing.T) {
 	}
 	if st.Teams[0].Slots[0].ChampionID != 103 || st.Teams[1].Slots[0].ChampionID != 22 {
 		t.Fatalf("champs ally=%d enemy=%d", st.Teams[0].Slots[0].ChampionID, st.Teams[1].Slots[0].ChampionID)
+	}
+}
+
+/* ── 回归：选人己方缺 1 人（2026-09-23 Bug③） ──────── */
+
+// 选人 myTeam 含身份不全条目（盲选/占位：puuid 空且 summonerId 0）被 conv 丢弃，
+// 但 gameflow 花名册已有完整己方 5 人 → 必须补回第 5 人（对局分支有补洞，选人分支此前没有）。
+func TestGetGameflowState_ChampSelect_AllyBackfillFromRoster(t *testing.T) {
+	cli := &fakeLCU{routes: map[string]string{
+		phasePath: `"ChampSelect"`,
+		lcu.PathChampSelectSession: `{"myTeam":[
+			{"puuid":"PSELF","summonerId":1,"championId":103},
+			{"puuid":"P2","summonerId":2,"championId":1},
+			{"puuid":"P3","summonerId":3,"championId":2},
+			{"puuid":"P4","summonerId":4,"championId":3},
+			{"puuid":"","summonerId":0,"championId":4}
+		],"theirTeam":[{"puuid":"","summonerId":0}]}`,
+		lcu.PathGameflowSession: `{"queueId":420,"gameData":{"teamOne":[
+			{"puuid":"PSELF","summonerId":1,"gameName":"我","tagLine":"CN1","profileIconId":7},
+			{"puuid":"P2","summonerId":2,"gameName":"队2","tagLine":"T2","profileIconId":8},
+			{"puuid":"P3","summonerId":3,"gameName":"队3","tagLine":"T3","profileIconId":9},
+			{"puuid":"P4","summonerId":4,"gameName":"队4","tagLine":"T4","profileIconId":10},
+			{"puuid":"P5","summonerId":5,"gameName":"队5","tagLine":"T5","profileIconId":11}
+		]}}`,
+	}}
+	svc := newTestService(cli, &fakeHist{}, &fakeLive{})
+	st, err := svc.GetGameflowState(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Teams[0].PlayerCount != 5 {
+		t.Fatalf("ally count=%d want 5（第 5 人应从花名册补回）", st.Teams[0].PlayerCount)
+	}
+	// 盲选敌方仍不可见
+	if st.Teams[1].PlayerCount != 0 {
+		t.Fatalf("enemy count=%d want 0（盲选敌方不得泄露）", st.Teams[1].PlayerCount)
+	}
+}
+
+// LCU myTeam 仅 4 条（第 5 人尚未入 session），花名册 5 人 → 同样补到 5。
+func TestGetGameflowState_ChampSelect_AllyShortSessionBackfill(t *testing.T) {
+	cli := &fakeLCU{routes: map[string]string{
+		phasePath: `"ChampSelect"`,
+		lcu.PathChampSelectSession: `{"myTeam":[
+			{"puuid":"PSELF","summonerId":1,"championId":103},
+			{"puuid":"P2","summonerId":2,"championId":1},
+			{"puuid":"P3","summonerId":3,"championId":2},
+			{"puuid":"P4","summonerId":4,"championId":3}
+		],"theirTeam":[]}`,
+		lcu.PathGameflowSession: `{"queueId":420,"gameData":{"teamOne":[
+			{"puuid":"PSELF","summonerId":1,"gameName":"我","tagLine":"CN1"},
+			{"puuid":"P2","summonerId":2,"gameName":"队2","tagLine":"T2"},
+			{"puuid":"P3","summonerId":3,"gameName":"队3","tagLine":"T3"},
+			{"puuid":"P4","summonerId":4,"gameName":"队4","tagLine":"T4"},
+			{"puuid":"P5","summonerId":5,"gameName":"队5","tagLine":"T5","profileIconId":11}
+		]}}`,
+	}}
+	svc := newTestService(cli, &fakeHist{}, &fakeLive{})
+	st, err := svc.GetGameflowState(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Teams[0].PlayerCount != 5 {
+		t.Fatalf("ally count=%d want 5", st.Teams[0].PlayerCount)
+	}
+	if got := st.Teams[0].Slots[4].GameName; got != "队5" {
+		t.Fatalf("5th ally gameName=%q want 队5", got)
 	}
 }
 
@@ -652,9 +718,9 @@ func TestPhaseLabelCN(t *testing.T) {
 	}
 }
 
-/* ── 设置热更新：近况场数 / 并发三挡 ──────────────────────────── */
+/* ── 设置热更新：近况场数 ──────────────────────────── */
 
-func TestSetCareerLimitAndConcurrency(t *testing.T) {
+func TestSetCareerLimit(t *testing.T) {
 	svc := newTestService(&fakeLCU{}, &fakeHist{}, &fakeLive{})
 
 	svc.SetCareerLimit(10)
@@ -664,17 +730,6 @@ func TestSetCareerLimitAndConcurrency(t *testing.T) {
 	svc.SetCareerLimit(3) // 非法值不生效
 	if svc.currentCareerLimit() != 10 {
 		t.Fatalf("careerLimit after invalid set = %d", svc.currentCareerLimit())
-	}
-
-	for _, n := range []int{2, 5, 10} {
-		svc.SetConcurrency(n)
-		if svc.currentConcurrency() != n {
-			t.Fatalf("concurrency = %d, want %d", svc.currentConcurrency(), n)
-		}
-	}
-	svc.SetConcurrency(8) // 旧挡位忽略
-	if svc.currentConcurrency() != 10 {
-		t.Fatalf("concurrency after invalid set = %d", svc.currentConcurrency())
 	}
 }
 

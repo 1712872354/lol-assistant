@@ -44,7 +44,7 @@ func main() {
 		return
 	}
 
-	svc := history.New(mon, 20, 4)
+	svc := history.New(mon, 20)
 	svc.SetSGPEnabled(true) // 与 config.sgpEnabled 默认值一致
 
 	self, err := svc.GetSelfSummoner()

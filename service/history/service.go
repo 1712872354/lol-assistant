@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/1712872354/lol-assistant/internal/lcu"
 	"github.com/1712872354/lol-assistant/internal/parser"
@@ -21,6 +22,12 @@ import (
 // ErrNotConnected LCU 未连接（绑定层直接透传给前端展示）
 var ErrNotConnected = errors.New("LCU 未连接，请先启动英雄联盟客户端并登录")
 
+// sgpTokenTTL SGP 双凭据成功缓存时长（LCU 会话期内 token 稳定；对局页 10 人聚合只需首取一次）
+const sgpTokenTTL = 5 * time.Minute
+
+// sgpTokenErrTTL 双凭据全败的负缓存时长（防 token 端点故障时风暴重试；var 便于测试注入）
+var sgpTokenErrTTL = 15 * time.Second
+
 // Service 战绩服务：查询/明细/段位/资源代理
 type Service struct {
 	clientFn func() (*lcu.Client, bool)
@@ -29,43 +36,45 @@ type Service struct {
 	pageMu   sync.RWMutex
 	pageSize int
 
-	semMu       sync.RWMutex
-	sem         chan struct{} // LCU 请求并发闸门（配置 apiConcurrency，可热更新）
-	concurrency int
-	assets      *assetCache
+	assets *assetCache // 图片资源代理缓存
 
 	// SGP 云端主数据源（开发方案 §4.2：SGP 优先、LCU 兜底；config.sgpEnabled 关闭则回退纯 LCU）
 	sgpMu           sync.RWMutex
 	sgpEnabled      bool
 	sgpFetchFn      sgpFetchFn      // 测试注入；nil 时用 sgp.FetchRankedStats
 	sgpMatchFetchFn sgpMatchFetchFn // 测试注入；nil 时用 sgp.FetchMatchHistory
+
+	// SGP 凭据缓存（持锁取数 = 单飞：并发 miss 只打一轮 LCU token 端点；
+	// tokCli 指针换代即会话失效，Monitor 重连会新建 Client 自然触发重取）
+	tokMu   sync.Mutex
+	tokCli  *lcu.Client
+	toks    sgpTokens
+	tokAt   time.Time
+	tokTTL  time.Duration
+	tokHave bool
 }
 
-// New 由 Monitor 构造服务（pageSize/apiConcurrency 来自应用配置）
+// New 由 Monitor 构造服务（pageSize 来自应用配置）。
+// 并发策略：LCU 请求由 internal/lcu 客户端闸门固定限 2 并发；SGP 云端不限并发。
 // SGP 数据源开关由 app 层按 config.sgpEnabled 显式注入（默认开启，fail-soft 兜底 LCU）
-func New(mon *lcu.Monitor, pageSize, concurrency int) *Service {
-	return NewWithClient(mon.Client, mon.Status, pageSize, concurrency)
+func New(mon *lcu.Monitor, pageSize int) *Service {
+	return NewWithClient(mon.Client, mon.Status, pageSize)
 }
 
 // NewWithClient 供单元测试注入客户端与状态函数
 func NewWithClient(
 	clientFn func() (*lcu.Client, bool),
 	statusFn func() lcu.ConnStatus,
-	pageSize, concurrency int,
+	pageSize int,
 ) *Service {
 	if pageSize < 5 || pageSize > 50 {
 		pageSize = 20
 	}
-	if concurrency < 2 || concurrency > 10 {
-		concurrency = 5
-	}
 	return &Service{
-		clientFn:    clientFn,
-		statusFn:    statusFn,
-		pageSize:    pageSize,
-		sem:         make(chan struct{}, concurrency),
-		concurrency: concurrency,
-		assets:      newAssetCache(),
+		clientFn: clientFn,
+		statusFn: statusFn,
+		pageSize: pageSize,
+		assets:   newAssetCache(),
 	}
 }
 
@@ -74,29 +83,6 @@ func (s *Service) SetSGPEnabled(on bool) {
 	s.sgpMu.Lock()
 	s.sgpEnabled = on
 	s.sgpMu.Unlock()
-}
-
-// SetConcurrency 配置变更时同步并发闸门容量（config.apiConcurrency，三挡 2/5/10）
-func (s *Service) SetConcurrency(n int) {
-	if n != 2 && n != 5 && n != 10 {
-		return
-	}
-	s.semMu.Lock()
-	defer s.semMu.Unlock()
-	if s.concurrency == n {
-		return
-	}
-	s.concurrency = n
-	s.sem = make(chan struct{}, n)
-}
-
-// acquire 占用一个并发槽；返回 release
-func (s *Service) acquire() func() {
-	s.semMu.RLock()
-	sem := s.sem
-	s.semMu.RUnlock()
-	sem <- struct{}{}
-	return func() { <-sem }
 }
 
 // SetPageSize 配置变更时同步分页大小（与 config.sanitize 取值域一致）
@@ -354,9 +340,6 @@ func (s *Service) getMatchesSGP(puuid string, page, beg, pageSize int) (MatchPag
 		return MatchPage{}, false // 无凭据 → 本批仅走 LCU，不视为错误
 	}
 
-	release := s.acquire()
-	defer release()
-
 	fetch := s.sgpMatchFetchFn
 	if fetch == nil {
 		fetch = sgp.FetchMatchHistory
@@ -440,7 +423,7 @@ type sgpMatchFetchFn func(host, puuid, token string, startIndex, count int) ([]b
 // unranked 未定级展示串（与前端 format.ts rankedDisplay 判定一致）
 const unranked = "未定级"
 
-// GetPlayersRanked 批量查询段位（并发受 apiConcurrency 限流）。
+// GetPlayersRanked 批量查询段位（LCU 并发由 internal/lcu 闸门固定限 2；SGP 云端不限并发）。
 // 入参可为 summonerId 或 puuid（国服对局 identities 两种都可能出现，前端双键收集）。
 //
 // 数据通路（探针 v11 实测校准；SGP 契约取自 Akari 2026-07）：
@@ -491,9 +474,6 @@ func (s *Service) GetPlayersRanked(summonerIDs []string) ([]RankedInfo, error) {
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
-			// 阶段一同样限流，防 40 个 id 裸并发打爆 LCU
-			release := s.acquire()
-			defer release()
 			canonical := id
 			if !isPuuid(id) {
 				if pu := resolvePuuid(cli, id); pu != "" {
@@ -542,8 +522,6 @@ func (s *Service) GetPlayersRanked(summonerIDs []string) ([]RankedInfo, error) {
 		wg.Add(1)
 		go func(c string) {
 			defer wg.Done()
-			release := s.acquire()
-			defer release()
 
 			res := rankResult{solo: unranked, flex: unranked}
 			filled := false
@@ -626,8 +604,17 @@ func (t sgpTokens) nonEmpty(a, b string) []string {
 	return out
 }
 
-// fetchSGPTokens 获取 SGP 双凭据（每调用现取；缺失项留空，由调用方降级）
+// fetchSGPTokens 获取 SGP 双凭据（带缓存：成功 TTL 5min、全败负缓存 15s、
+// Client 换代即失效；持 tokMu 取数形成单飞，并发 miss 只打一轮 LCU token 端点。
+// 缺失项留空，由调用方降级）。
 func (s *Service) fetchSGPTokens(cli *lcu.Client) sgpTokens {
+	s.tokMu.Lock()
+	defer s.tokMu.Unlock()
+
+	if s.tokHave && s.tokCli == cli && time.Since(s.tokAt) < s.tokTTL {
+		return s.toks
+	}
+
 	var t sgpTokens
 	if tok, err := sgp.FetchLeagueSessionToken(cli.Get); err == nil {
 		t.session = tok
@@ -638,6 +625,16 @@ func (s *Service) fetchSGPTokens(cli *lcu.Client) sgpTokens {
 		t.entitlements = tok
 	} else {
 		slog.Debug("[sgp] entitlements token unavailable", "err", err)
+	}
+
+	s.tokCli = cli
+	s.toks = t
+	s.tokAt = time.Now()
+	s.tokHave = true
+	if t.session != "" || t.entitlements != "" {
+		s.tokTTL = sgpTokenTTL
+	} else {
+		s.tokTTL = sgpTokenErrTTL
 	}
 	return t
 }

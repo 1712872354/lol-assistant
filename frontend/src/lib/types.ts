@@ -18,7 +18,6 @@ export interface AppConfig {
   schemaVersion: number;
   theme: ThemeMode;
   pageSize: number;
-  apiConcurrency: number;
   sgpEnabled: boolean;
   closeToTray: boolean;
   clientPath: string;
@@ -28,15 +27,12 @@ export const DEFAULT_CONFIG: AppConfig = {
   schemaVersion: 1,
   theme: "system",
   pageSize: 20,
-  apiConcurrency: 5,
   sgpEnabled: true,
   closeToTray: true,
   clientPath: "",
 };
 
 export type ViewKey = "history" | "gameinfo" | "settings";
-
-export const APP_VERSION = "v1.0.2";
 
 /** 对局信息页：筛选视图 */
 export type GameinfoSideFilter = "ally" | "all" | "enemy";

@@ -23,13 +23,12 @@ const (
 
 // Config 应用配置（前端 AppConfig 类型与 JSON 字段一一对应）
 type Config struct {
-	SchemaVersion  int       `json:"schemaVersion"`
-	Theme          ThemeMode `json:"theme"`
-	PageSize       int       `json:"pageSize"`
-	ApiConcurrency int       `json:"apiConcurrency"`
-	SgpEnabled     bool      `json:"sgpEnabled"`
-	CloseToTray    bool      `json:"closeToTray"`
-	ClientPath     string    `json:"clientPath"`
+	SchemaVersion int       `json:"schemaVersion"`
+	Theme         ThemeMode `json:"theme"`
+	PageSize      int       `json:"pageSize"`
+	SgpEnabled    bool      `json:"sgpEnabled"`
+	CloseToTray   bool      `json:"closeToTray"`
+	ClientPath    string    `json:"clientPath"`
 }
 
 const currentSchema = 1
@@ -37,12 +36,11 @@ const currentSchema = 1
 // Default 默认配置（对应开发方案 §2.1 设置项）
 func Default() Config {
 	return Config{
-		SchemaVersion:  currentSchema,
-		Theme:          ThemeSystem,
-		PageSize:       20,
-		ApiConcurrency: 5,
-		SgpEnabled:     true,
-		CloseToTray:    true,
+		SchemaVersion: currentSchema,
+		Theme:         ThemeSystem,
+		PageSize:      20,
+		SgpEnabled:    true,
+		CloseToTray:   true,
 	}
 }
 
@@ -106,16 +104,6 @@ func sanitize(c Config) Config {
 	}
 	if c.PageSize < 5 || c.PageSize > 50 {
 		c.PageSize = d.PageSize
-	}
-	// 对局页聚合并发仅开放 2/5/10 三挡，旧值（4/6/8 等）归一到默认 5
-	if c.ApiConcurrency < 1 || c.ApiConcurrency > 32 {
-		c.ApiConcurrency = d.ApiConcurrency
-	}
-	// 对局页聚合并发仅开放 2/5/10 三档，旧值（4/6/8 等）归一到默认 5
-	switch c.ApiConcurrency {
-	case 2, 5, 10:
-	default:
-		c.ApiConcurrency = d.ApiConcurrency
 	}
 	// ClientPath 拒绝 UNC/设备路径，防 NTLM 凭据外泄
 	c.ClientPath = sanitizeClientPath(c.ClientPath)

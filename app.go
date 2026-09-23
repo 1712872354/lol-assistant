@@ -24,7 +24,7 @@ type App struct {
 	ctx       context.Context
 	cfg       *config.Store
 	monitor   *lcu.Monitor
-	hist      *history.Service   // M2 历史战绩服务（startup 构造，注入 pageSize/apiConcurrency）
+	hist      *history.Service   // M2 历史战绩服务（startup 构造，注入 pageSize）
 	live      *liveclient.Client // M3 Live Client 数据端 :2999（fail-soft，仅游戏中可达）
 	game      *gameinfo.Service  // M3 对局信息聚合服务
 	version   string             // 构建注入（ldflags -X main.version=）
@@ -45,11 +45,10 @@ func (a *App) startup(ctx context.Context) {
 	a.cfg.Load()
 	a.fitWindowToScreen()
 	a.monitor.SetClientPath(a.cfg.Get().ClientPath) // lockfile 通道候选路径
-	a.hist = history.New(a.monitor, a.cfg.Get().PageSize, a.cfg.Get().ApiConcurrency)
+	a.hist = history.New(a.monitor, a.cfg.Get().PageSize)
 	a.hist.SetSGPEnabled(a.cfg.Get().SgpEnabled) // SGP 云端数据源开关（段位/战绩优先 SGP，可禁用回退 LCU）
-	a.hist.SetConcurrency(a.cfg.Get().ApiConcurrency)
 	a.live = liveclient.New()
-	a.game = gameinfo.New(a.monitor, a.hist, a.live, a.cfg.Get().ApiConcurrency)
+	a.game = gameinfo.New(a.monitor, a.hist, a.live)
 	a.game.SetCareerLimit(a.cfg.Get().PageSize)
 	a.monitor.Start(ctx, a.onConnChange, a.onLcuEvent)
 	a.startTray()
@@ -64,21 +63,30 @@ func (a *App) startTray() {
 	})
 }
 
-// showMainWindow 托盘唤回：显示并置于前台
+// showMainWindow 托盘唤回：显示并置于前台（异步，避免托盘消费循环被 Wails IPC 卡住）
 func (a *App) showMainWindow() {
 	if a.ctx == nil {
 		return
 	}
-	runtime.WindowShow(a.ctx)
-	runtime.WindowUnminimise(a.ctx)
-	runtime.WindowSetAlwaysOnTop(a.ctx, true) // 短暂置顶抢焦点
-	runtime.WindowSetAlwaysOnTop(a.ctx, false)
+	ctx := a.ctx
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("show window panic", "recover", r)
+			}
+		}()
+		runtime.WindowShow(ctx)
+		runtime.WindowUnminimise(ctx)
+		runtime.WindowSetAlwaysOnTop(ctx, true) // 短暂置顶抢焦点
+		runtime.WindowSetAlwaysOnTop(ctx, false)
+	}()
 }
 
-// quitFromTray 托盘「退出」：收起托盘后结束应用
+// quitFromTray 托盘「退出」：收起托盘后结束应用。
+// forceQuit 先落，保证 beforeClose/closeToTray 不拦截；Stop 放后台避免消息泵耦合。
 func (a *App) quitFromTray() {
 	a.forceQuit.Store(true)
-	tray.Stop()
+	go tray.Stop()
 	if a.ctx != nil {
 		runtime.Quit(a.ctx)
 	}
@@ -166,7 +174,7 @@ func (a *App) histService() *history.Service {
 	svcMu.Lock()
 	defer svcMu.Unlock()
 	if a.hist == nil {
-		a.hist = history.New(a.monitor, a.cfg.Get().PageSize, a.cfg.Get().ApiConcurrency)
+		a.hist = history.New(a.monitor, a.cfg.Get().PageSize)
 		a.hist.SetSGPEnabled(a.cfg.Get().SgpEnabled)
 	}
 	return a.hist
@@ -181,10 +189,10 @@ func (a *App) gameService() *gameinfo.Service {
 			a.live = liveclient.New()
 		}
 		if a.hist == nil {
-			a.hist = history.New(a.monitor, a.cfg.Get().PageSize, a.cfg.Get().ApiConcurrency)
+			a.hist = history.New(a.monitor, a.cfg.Get().PageSize)
 			a.hist.SetSGPEnabled(a.cfg.Get().SgpEnabled)
 		}
-		a.game = gameinfo.New(a.monitor, a.hist, a.live, a.cfg.Get().ApiConcurrency)
+		a.game = gameinfo.New(a.monitor, a.hist, a.live)
 	}
 	return a.game
 }
@@ -209,9 +217,7 @@ func (a *App) SetConfig(c config.Config) error {
 	a.monitor.SetClientPath(a.cfg.Get().ClientPath) // 客户端目录变更影响 lockfile 检测
 	a.histService().SetPageSize(a.cfg.Get().PageSize)
 	a.histService().SetSGPEnabled(a.cfg.Get().SgpEnabled) // SGP 数据源开关热更新
-	a.histService().SetConcurrency(a.cfg.Get().ApiConcurrency)
-	a.gameService().SetCareerLimit(a.cfg.Get().PageSize) // 对局页近况场数 = pageSize
-	a.gameService().SetConcurrency(a.cfg.Get().ApiConcurrency)
+	a.gameService().SetCareerLimit(a.cfg.Get().PageSize)  // 对局页近况场数 = pageSize
 	// closeToTray 托盘未落地前仅持久化，见 WindowClose 注释
 	return nil
 }
@@ -334,6 +340,6 @@ func (a *App) WindowClose() {
 		return
 	}
 	a.forceQuit.Store(true)
-	tray.Stop()
+	go tray.Stop()
 	runtime.Quit(a.ctx)
 }

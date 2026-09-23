@@ -2,6 +2,24 @@
 
 本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions `generate_release_notes` 补充提交列表）。
 
+## [v1.0.5] - 2026-09-23
+
+### 修复
+
+- **系统托盘假死**：菜单项与点击消费循环先于 `SetIcon` 就绪；点击处理异步执行并恢复 panic，避免后续点击被库丢弃导致卡死
+- **选人阶段己方少显示 1 人战绩**：`myTeam` 身份不全条目被过滤或 session 未到齐时，从 gameflow 花名册补回己方成员（敌方仍不补，防盲选泄露）
+
+### 性能 / 重构
+
+- LCU 请求并发固定闸门 2（`internal/lcu`），移除设置项「API 并发」及相关前后端绑定
+- SGP token 单飞缓存（5 分钟有效 / 15 分钟错误退避），减少选人阶段重复换票
+
+### 说明
+
+- 安装包 `LOLAssistant-Setup-1.0.5.exe` / 绿色版 `LOLAssistant-Portable-1.0.5.zip` / `SHA256SUMS.txt`，Windows x64 · 需 WebView2 运行时
+
+---
+
 ## [v1.0.4] - 2026-09-22
 
 ### 修复
