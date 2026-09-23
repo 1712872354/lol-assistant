@@ -18,7 +18,8 @@ fe_u8.txt
 src-tauri/target/
 src-tauri/gen/
 
-# 鏍?package.json锛堜粎 Tauri CLI锛?/node_modules/
+# 根 package.json（仅 Tauri CLI）
+/node_modules/
 /release-assets/
 /scratch/
 
