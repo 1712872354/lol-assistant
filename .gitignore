@@ -1,5 +1,3 @@
-build/bin/
-build/windows/installer/tmp/
 frontend/node_modules/
 frontend/dist/
 dist/
@@ -11,11 +9,18 @@ fe_build*.txt
 gen_out*.txt
 test_*.txt
 vet_out*.txt
-wails_*.txt
-wails_bin.txt
-dist_before.txt
 *.md5
 fe_u8.txt
 *.exe
-!build/windows/installer/tmp/.gitkeep
 .DS_Store
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# 鏍?package.json锛堜粎 Tauri CLI锛?/node_modules/
+/release-assets/
+/scratch/
+
+# 本地会话配置
+.claude/

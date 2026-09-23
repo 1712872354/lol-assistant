@@ -11,11 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-          cache: true
-
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -24,56 +19,44 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            frontend/pnpm-lock.yaml
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
-      - name: Install NSIS
-        run: |
-          choco install nsis -y --no-progress
-          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri"
+
+      - name: Install root deps (Tauri CLI)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: pnpm typecheck
 
       - name: Frontend build
         working-directory: frontend
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
+        run: pnpm build
 
-      - name: Go vet
-        run: go vet ./...
+      - name: cargo fmt
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
 
-      - name: Go test
-        run: go test ./... -count=1
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
 
-      - name: Go test race
-        run: go test ./... -race -count=1
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test
 
-      - name: Ensure project.nsi UTF-8 BOM
-        shell: pwsh
-        run: |
-          $path = "build/windows/installer/project.nsi"
-          $bytes = [IO.File]::ReadAllBytes($path)
-          $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
-          if (-not $hasBom) {
-            $c = [IO.File]::ReadAllText($path, [Text.UTF8Encoding]::new($false))
-            [IO.File]::WriteAllText($path, $c, [Text.UTF8Encoding]::new($true))
-            Write-Output "Added UTF-8 BOM to $path"
-          } else {
-            Write-Output "$path already has UTF-8 BOM"
-          }
-
-      - name: Wails build (NSIS)
-        run: wails build -platform windows/amd64 -nsis -ldflags "-s -w"
-
-      - name: Artifact sizes
-        shell: pwsh
-        run: |
-          Get-ChildItem build/bin | ForEach-Object {
-            "{0}`t{1:N1} KB" -f $_.Name, ($_.Length / 1KB)
-          }
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: lol-assistant-win-x64
-          path: build/bin/*
+      - name: Tauri build (debug bundle smoke)
+        run: pnpm tauri build --debug --no-bundle

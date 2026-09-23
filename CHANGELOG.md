@@ -1,6 +1,27 @@
 # 更新日志
 
-本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions `generate_release_notes` 补充提交列表）。
+本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions 从本文件摘取并附上 `SHA256SUMS`）。
+
+## [v1.0.7] - 2026-09-24
+
+### 迁移
+
+- **后端由 Go + Wails 迁至 Rust + Tauri 2**：窗口、托盘、战绩/对局/设置、更新链路全部等价移植
+- **更新改为 `tauri-plugin-updater` + minisign 签名**：发布产物附 `latest.json`（`windows-x86_64` + `windows-x86_64-portable` 双 platform），镜像端点 `ghp.ci`
+- **便携版支持应用内热更新**：exe 旁 `portable.flag` 识别，下载校验后由 helper 进程原子替换并回滚
+
+### 修复
+
+- **客户端状态判定不工作**：LCU WebSocket 改 `wss://` + Basic 认证头 + 跳过自签证书校验；补指数退避重连与连接日志
+- **战绩详情打不开**：`get_match_detail` 等命令参数键改为 Tauri 2 期望的 camelCase（`gameId` / `selfPuuid` 等）
+
+### 说明
+
+- **≤1.0.6 旧客户端无法自动迁到新更新链路，需最后一次手动安装 ≥1.0.7**；之后应用内更新即可正常
+- 安装包 `LOLAssistant-Setup-<ver>.exe` / 绿色版 `LOLAssistant-Portable-<ver>.zip` / `latest.json` / `SHA256SUMS.txt`，Windows x64 · 需 WebView2
+- 数据目录仍为 `%APPDATA%\LOLAssistant`（安装版与便携版一致，行为与 1.0.6 相同）
+
+---
 
 ## [v1.0.6] - 2026-09-23
 

@@ -1,46 +1,79 @@
-# 发版步骤（GitHub Actions）
+# 发版步骤（GitHub Actions · Tauri）
 
 仓库需 **Public**（国内用户才能走镜像下载 Release 资产）。
 
+## 0. 前置：更新签名密钥（仅首次/轮换）
+
+1. 本地生成：`cargo tauri signer generate --ci -w %USERPROFILE%\.tauri\lol-assistant.key`
+2. 把公钥写入 `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`（已完成）
+3. GitHub 仓库 Secrets 配置：
+   - `TAURI_SIGNING_PRIVATE_KEY`：私钥文件**全文**（`~/.tauri/lol-assistant.key`）
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：私钥密码（无密码则留空/设为空字符串）
+
+**私钥勿提交仓库。**
+
 ## 1. 日常发版
 
-1. 更新 `CHANGELOG.md`：在文首 `## [Unreleased]` 下整理本次改动，或直接新增 `## [vX.Y.Z] - 日期`
-2. 提交后打 Tag 并推送：
+1. 更新 `CHANGELOG.md`：新增 `## [vX.Y.Z] - 日期`，整理本次改动
+2. 确认本地全绿：
+
+```powershell
+# 前端
+cd frontend; pnpm typecheck
+# Rust（在 src-tauri 下）
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
+
+3. 提交后打 Tag 并推送：
 
 ```powershell
 git tag -a vX.Y.Z -m "vX.Y.Z"
 git push origin main --tags
 ```
 
-3. `release.yml` 会自动：
-   - 前端构建 + `go vet` + `go test ./...`
-   - 产出 `LOLAssistant-Setup-<ver>.exe` / `LOLAssistant-Portable-<ver>.zip`
-   - 生成 `SHA256SUMS.txt`，并把其内容写入 Release 正文「安装校验」段（更新器从官方 API 读哈希）
-   - 从 `CHANGELOG.md` 摘取说明并创建 GitHub Release
+4. `release.yml` 会自动：
+   - 注入版本号到 `Cargo.toml` + `tauri.conf.json`
+   - `pnpm tauri build`（前端构建 + NSIS + updater 签名产物 `.sig`）
+   - 打包 `LOLAssistant-Portable-<ver>.zip`（根目录 `LOLAssistant-portable/` + `portable.flag`）并签名
+   - 生成 `latest.json`（双 platform：`windows-x86_64` / `windows-x86_64-portable`）
+   - 生成 `SHA256SUMS.txt`，从 `CHANGELOG.md` 摘取说明，创建 GitHub Release
 
-4. 在 Release 页核对资产名与哈希即可，**无需再手工贴描述**。
+5. 在 Release 页核对资产即可，**无需再手工贴描述**。
 
 ## 2. 资产命名（与应用内更新器约定一致）
 
 | 资产 | 说明 |
 |------|------|
-| `LOLAssistant-Setup-<ver>.exe` | NSIS 安装包（推荐） |
-| `LOLAssistant-Portable-<ver>.zip` | 绿色版 |
-| `SHA256SUMS.txt` | 校验哈希（更新器：官方正文 → `api.github.com` 资产端点 → `github.com` 直链，镜像不采信） |
+| `LOLAssistant-Setup-<ver>.exe` (+ `.sig`) | NSIS 安装包（推荐） |
+| `LOLAssistant-Portable-<ver>.zip` (+ `.sig`) | 绿色版，根为 `LOLAssistant-portable/` |
+| `latest.json` | `tauri-plugin-updater` 清单（双 endpoint 拉取） |
+| `SHA256SUMS.txt` | 人工核对哈希（更新链路已改 minisign，不再依赖正文 SHA256） |
 
-## 3. 安装校验
+## 3. 更新端点
+
+- 官方：`https://github.com/1712872354/lol-assistant/releases/latest/download/latest.json`
+- 镜像：`https://ghp.ci/https://github.com/1712872354/lol-assistant/releases/latest/download/latest.json`
+
+## 4. 本地构建
 
 ```powershell
-Get-FileHash .\LOLAssistant-Setup-<ver>.exe -Algorithm SHA256
-# 与 SHA256SUMS.txt 中对应行比对
+# 开发
+pnpm tauri dev
+# 发布产物（需已配置签名 Secrets 环境变量，否则 updater 产物可能不完整）
+pnpm tauri build
 ```
 
-## 4. 已知限制
+## 5. 已知限制
 
-- 未做 Authenticode 签名，杀软可能提示；请核对哈希后再安装
-- 应用内更新会校验 SHA256；空哈希将拒绝安装
-- **≤1.0.5 旧客户端**只拉 `github.com` 直链取 checksums，国内超时会报「缺少 SHA256」——需手动安装一次 ≥1.0.6，之后走正文/`api.github.com` 通路即可正常更新
+- 未做 Authenticode 签名，杀软可能提示；更新链路用 minisign 校验
+- **≤1.0.6 旧客户端**走旧 SHA256 自写链路，无法读到 `latest.json`——需**最后一次手动安装 ≥1.0.7**，之后应用内更新正常（见 CHANGELOG）
 
-## 5. 若 fork 仓库
+## 6. 若 fork 仓库
 
-同步修改 `internal/update/update.go` 中的 `RepoOwner` / `RepoName`。
+同步修改：
+
+- `src-tauri/tauri.conf.json` → `plugins.updater.endpoints`
+- `src-tauri/src/update.rs` → `REPO_OWNER` / `REPO_NAME`
+- `.github/workflows/release.yml` → `latest.json` 内 owner/repo

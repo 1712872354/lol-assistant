@@ -111,7 +111,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
 
   downloadAndInstall: async () => {
     const info = get().info;
-    if (!info?.setupUrl || get().installing) return;
+    if (!info?.hasUpdate || get().installing) return;
     set({
       installing: true,
       error: null,
@@ -126,7 +126,8 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
 
     try {
       // 严格调用：失败必须进 catch，不能把 null 当成功
-      await callAppStrict<string>("DownloadAndInstallUpdate", info.setupUrl, info.sha256 ?? "");
+      // tauri-plugin-updater 流程：后端自行 check + download + install，无需 setupUrl/sha256
+      await callAppStrict<void>("DownloadAndInstallUpdate");
       set({
         installing: false,
         progress: { stage: "done", percent: 100, message: "安装程序已启动，即将退出" },

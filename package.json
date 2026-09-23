@@ -1,0 +1,11 @@
+{
+  "name": "lol-assistant",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "typecheck": "pnpm --dir frontend typecheck"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -8,16 +8,15 @@ on:
 permissions:
   contents: write
 
+env:
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
 jobs:
   release:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-          cache: true
 
       - uses: pnpm/action-setup@v4
         with:
@@ -27,44 +26,45 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            frontend/pnpm-lock.yaml
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri"
+
+      - name: Cache NSIS
+        id: cache-nsis
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files (x86)\NSIS
+          key: ${{ runner.os }}-nsis-v1
 
       - name: Install NSIS
-        run: |
-          choco install nsis -y --no-progress
-          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        if: steps.cache-nsis.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: choco install nsis -y --no-progress
 
-      - name: Verify makensis
+      - name: Add NSIS to PATH
         shell: pwsh
         run: |
-          $m = Get-Command makensis -ErrorAction SilentlyContinue
-          if (-not $m) {
-            $fallback = "C:\Program Files (x86)\NSIS\makensis.exe"
-            if (Test-Path $fallback) {
-              echo $fallback | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-              echo "Added $fallback to PATH"
-            } else {
-              Write-Error "makensis not found"
-              exit 1
-            }
-          } else {
-            makensis /VERSION
+          $nsis = "C:\Program Files (x86)\NSIS"
+          if (-not (Test-Path (Join-Path $nsis "makensis.exe"))) {
+            Write-Error "makensis.exe not found at $nsis"
+            exit 1
           }
+          echo $nsis | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & (Join-Path $nsis "makensis.exe") /VERSION
 
-      - name: Frontend build
+      - name: Install root deps (Tauri CLI)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install frontend deps
         working-directory: frontend
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
-
-      - name: Go vet
-        run: go vet ./...
-
-      - name: Go test
-        run: go test ./...
+        run: pnpm install --frozen-lockfile
 
       - name: Resolve version
         id: ver
@@ -75,68 +75,159 @@ jobs:
           "version=$ver" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
 
-      - name: Ensure project.nsi UTF-8 BOM
+      - name: Inject version
         shell: pwsh
         run: |
-          $path = "build/windows/installer/project.nsi"
-          $bytes = [IO.File]::ReadAllBytes($path)
-          $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
-          if (-not $hasBom) {
-            $c = [IO.File]::ReadAllText($path, [Text.UTF8Encoding]::new($false))
-            [IO.File]::WriteAllText($path, $c, [Text.UTF8Encoding]::new($true))
-            Write-Output "Added UTF-8 BOM to $path"
-          } else {
-            Write-Output "$path already has UTF-8 BOM"
+          $ver = "${{ steps.ver.outputs.version }}"
+          # Cargo.toml package.version
+          $cargo = Get-Content src-tauri/Cargo.toml -Raw
+          $cargo = [regex]::Replace($cargo, '(?m)^version\s*=\s*"[^"]+"', "version = `"$ver`"", 1)
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [IO.File]::WriteAllText("src-tauri/Cargo.toml", $cargo, $utf8NoBom)
+          # tauri.conf.json version
+          $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $conf.version = $ver
+          [IO.File]::WriteAllText("src-tauri/tauri.conf.json", ($conf | ConvertTo-Json -Depth 100), $utf8NoBom)
+          Write-Host "Injected version $ver"
+
+      - name: Check signing key present
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            Write-Error "Secret TAURI_SIGNING_PRIVATE_KEY is empty or missing"
+            exit 1
           }
 
-      - name: Wails build (NSIS)
-        shell: pwsh
-        run: |
-          $ver = "${{ steps.ver.outputs.version }}"
-          $info = Get-Content build/windows/info.json -Raw | ConvertFrom-Json
-          $info.productVersion = $ver
-          $info | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 build/windows/info.json
-          wails build -platform windows/amd64 -nsis -ldflags "-s -w -X main.version=${{ steps.ver.outputs.tag }}"
+      - name: Tauri build (NSIS + updater artifacts)
+        run: pnpm tauri build
 
-      - name: Package artifacts
+      - name: Package release assets
         shell: pwsh
         run: |
           $ver = "${{ steps.ver.outputs.version }}"
-          $bin = "build/bin"
+          $tag = "${{ steps.ver.outputs.tag }}"
           $out = "release-assets"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
 
-          Write-Host "build/bin contents:"
-          Get-ChildItem $bin | Format-Table Name, Length
-
-          $setup = Get-ChildItem $bin -Filter "*installer*.exe" | Select-Object -First 1
-          if (-not $setup) {
-            Write-Error "NSIS installer missing in $bin (makensis likely not on PATH)"
+          # 安装版：bundle/nsis 产物改名为约定名
+          $nsisDir = "src-tauri/target/release/bundle/nsis"
+          if (-not (Test-Path $nsisDir)) {
+            Write-Error "NSIS bundle dir missing: $nsisDir"
             exit 1
           }
-          $app = Get-ChildItem $bin -Filter "LOL*.exe" | Select-Object -First 1
-          if (-not $app) {
-            Write-Error "Application exe missing in $bin"
+          Get-ChildItem $nsisDir | Format-Table Name, Length
+
+          $setup = Get-ChildItem $nsisDir -Filter "*.exe" |
+            Where-Object { $_.Name -notlike "*.sig" } |
+            Select-Object -First 1
+          if (-not $setup) {
+            Write-Error "Setup exe missing in $nsisDir"
+            exit 1
+          }
+          $setupSig = Get-ChildItem $nsisDir -Filter "*.exe.sig" | Select-Object -First 1
+          if (-not $setupSig) {
+            Write-Error "Setup .sig missing (createUpdaterArtifacts + signing key)"
             exit 1
           }
 
           $setupName = "LOLAssistant-Setup-$ver.exe"
-          $portName = "LOLAssistant-Portable-$ver.zip"
           Copy-Item $setup.FullName (Join-Path $out $setupName)
+          Copy-Item $setupSig.FullName (Join-Path $out "$setupName.sig")
 
-          $stage = Join-Path $out "_portable"
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item $app.FullName (Join-Path $stage "LOLAssistant.exe")
-          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath (Join-Path $out $portName) -Force
-          Remove-Item $stage -Recurse -Force
-
-          $sums = Get-ChildItem $out -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | ForEach-Object {
-            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-            "$h  $($_.Name)"
+          # Portable zip：根 LOLAssistant-portable/ + portable.flag（与 portable_updater 一致）
+          $bin = "src-tauri/target/release/LOLAssistant.exe"
+          if (-not (Test-Path $bin)) {
+            # 兜底：同目录任意 exe
+            $bin = Get-ChildItem "src-tauri/target/release" -Filter "*.exe" |
+              Where-Object { $_.Name -notlike "*helper*" } |
+              Select-Object -First 1 -ExpandProperty FullName
           }
+          if (-not $bin -or -not (Test-Path $bin)) {
+            Write-Error "Release exe missing"
+            exit 1
+          }
+
+          $stageRoot = Join-Path $env:RUNNER_TEMP "lol-portable-stage"
+          $portableDir = Join-Path $stageRoot "LOLAssistant-portable"
+          if (Test-Path $stageRoot) { Remove-Item $stageRoot -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+          Copy-Item $bin (Join-Path $portableDir "LOLAssistant.exe")
+          New-Item -ItemType File -Force -Path (Join-Path $portableDir "portable.flag") | Out-Null
+
+          $portName = "LOLAssistant-Portable-$ver.zip"
+          $portPath = Join-Path $out $portName
+          if (Test-Path $portPath) { Remove-Item $portPath -Force }
+          # stageRoot 仅含 LOLAssistant-portable/ → zip 根为该目录（与 portable_updater 一致）
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($stageRoot, $portPath)
+
+          # 签名 portable zip
+          pnpm tauri signer sign $portPath --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          $portSig = "$portPath.sig"
+          if (-not (Test-Path $portSig)) {
+            Write-Error "Portable zip .sig missing"
+            exit 1
+          }
+
+          # SHA256SUMS（可选，人工核对）
+          $sums = Get-ChildItem $out -File |
+            Where-Object { $_.Name -ne "SHA256SUMS.txt" -and $_.Extension -ne ".sig" } |
+            ForEach-Object {
+              $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+              "$h  $($_.Name)"
+            }
           $sums | Set-Content -Encoding ascii (Join-Path $out "SHA256SUMS.txt")
 
           Get-ChildItem $out | Format-Table Name, Length
+
+      - name: Generate latest.json
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $tag = "${{ steps.ver.outputs.tag }}"
+          $owner = "1712872354"
+          $repo = "lol-assistant"
+
+          $setupName = "LOLAssistant-Setup-$ver.exe"
+          $portName = "LOLAssistant-Portable-$ver.zip"
+          $setupSigPath = "release-assets/$setupName.sig"
+          $portSigPath = "release-assets/$portName.sig"
+          if (-not (Test-Path $setupSigPath) -or -not (Test-Path $portSigPath)) {
+            Write-Error "Signature files missing"
+            exit 1
+          }
+          $setupSig = (Get-Content $setupSigPath -Raw).Trim()
+          $portSig = (Get-Content $portSigPath -Raw).Trim()
+          $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+          # notes：从 CHANGELOG.md 摘取当前版本正文
+          $cl = Get-Content CHANGELOG.md -Raw
+          $notes = "See CHANGELOG.md"
+          if ($cl -match "(?s)## \[$([regex]::Escape("v$ver"))\][^\n]*\r?\n(.*?)(?=\r?\n## \[)") {
+            $notes = $Matches[1].Trim()
+          } elseif ($cl -match "(?s)## \[$([regex]::Escape("v$ver"))\][^\n]*\r?\n(.*)") {
+            $notes = $Matches[1].Trim()
+          }
+
+          $latest = [ordered]@{
+            version = $ver
+            notes   = $notes
+            pub_date = $pubDate
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $setupSig
+                url       = "https://github.com/$owner/$repo/releases/download/$tag/$setupName"
+              }
+              "windows-x86_64-portable" = [ordered]@{
+                signature = $portSig
+                url       = "https://github.com/$owner/$repo/releases/download/$tag/$portName"
+              }
+            }
+          }
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          $json = $latest | ConvertTo-Json -Depth 10
+          [IO.File]::WriteAllText("release-assets/latest.json", $json, $utf8NoBom)
+          Get-Content release-assets/latest.json
 
       - name: Extract changelog notes
         shell: pwsh
@@ -149,8 +240,6 @@ jobs:
           } elseif ($cl -match "(?s)## \[$([regex]::Escape($ver))\][^\n]*\r?\n(.*)") {
             $body = $Matches[1].Trim()
           }
-          # SHA256SUMS 写入正文：更新器可从官方 API 一次拿到哈希（直链 github.com 国内常超时）
-          # 注意：pwsh 内勿用反引号字面量拼围栏（易被解析截断），用 char 拼接
           $sumsPath = "release-assets/SHA256SUMS.txt"
           if (Test-Path $sumsPath) {
             $sums = [IO.File]::ReadAllText($sumsPath).Trim()
@@ -158,7 +247,8 @@ jobs:
             $fence = [string]::new([char]0x60, 3)
             $body = ($body.TrimEnd() + $nl + $nl + "### 安装校验" + $nl + $nl + $fence + "text" + $nl + $sums + $nl + $fence)
           }
-          $body | Set-Content -Path release-notes.md -Encoding utf8
+          $utf8 = New-Object System.Text.UTF8Encoding($true)
+          [IO.File]::WriteAllText("release-notes.md", $body, $utf8)
           Get-Content release-notes.md
 
       - name: Create GitHub Release
