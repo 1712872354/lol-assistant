@@ -150,10 +150,13 @@ jobs:
             $body = $Matches[1].Trim()
           }
           # SHA256SUMS 写入正文：更新器可从官方 API 一次拿到哈希（直链 github.com 国内常超时）
+          # 注意：pwsh 内勿用反引号字面量拼围栏（易被解析截断），用 char 拼接
           $sumsPath = "release-assets/SHA256SUMS.txt"
           if (Test-Path $sumsPath) {
             $sums = [IO.File]::ReadAllText($sumsPath).Trim()
-            $body = $body.TrimEnd() + "`n`n### 安装校验`n`n```````text`n$sums`n```````"
+            $nl = "`n"
+            $fence = [string]::new([char]0x60, 3)
+            $body = ($body.TrimEnd() + $nl + $nl + "### 安装校验" + $nl + $nl + $fence + "text" + $nl + $sums + $nl + $fence)
           }
           $body | Set-Content -Path release-notes.md -Encoding utf8
           Get-Content release-notes.md
