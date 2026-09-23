@@ -2,6 +2,22 @@
 
 本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions `generate_release_notes` 补充提交列表）。
 
+## [v1.0.6] - 2026-09-23
+
+### 修复
+
+- **更新提示「缺少 SHA256，拒绝安装未校验安装包」**：`SHA256SUMS.txt` 直连 `github.com` 国内常超时导致哈希为空
+  - 优先从官方 Release 正文解析哈希（CI 发版时把 `SHA256SUMS` 写入正文，随 API 一次返回）
+  - 回退经 `api.github.com` 资产端点拉取 checksums（该域名国内通常可达）
+  - 下载镜像列表补充 `gh-proxy.com`
+
+### 说明
+
+- **手动安装过一次后，后续应用内更新即可正常校验**（旧版客户端仍只拉 `github.com` 直链，无法热修）
+- 安装包 `LOLAssistant-Setup-1.0.6.exe` / 绿色版 `LOLAssistant-Portable-1.0.6.zip` / `SHA256SUMS.txt`，Windows x64 · 需 WebView2 运行时
+
+---
+
 ## [v1.0.5] - 2026-09-23
 
 ### 修复

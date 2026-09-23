@@ -149,6 +149,12 @@ jobs:
           } elseif ($cl -match "(?s)## \[$([regex]::Escape($ver))\][^\n]*\r?\n(.*)") {
             $body = $Matches[1].Trim()
           }
+          # SHA256SUMS 写入正文：更新器可从官方 API 一次拿到哈希（直链 github.com 国内常超时）
+          $sumsPath = "release-assets/SHA256SUMS.txt"
+          if (Test-Path $sumsPath) {
+            $sums = [IO.File]::ReadAllText($sumsPath).Trim()
+            $body = $body.TrimEnd() + "`n`n### 安装校验`n`n```````text`n$sums`n```````"
+          }
           $body | Set-Content -Path release-notes.md -Encoding utf8
           Get-Content release-notes.md
 

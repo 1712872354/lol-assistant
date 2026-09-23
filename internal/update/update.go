@@ -48,7 +48,10 @@ type Progress struct {
 type ghAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
-	Size               int64  `json:"size"`
+	// URL GitHub API 资产内容端点（api.github.com/.../releases/assets/{id}）；
+	// 国内直连 github.com 发行资产常超时，api.github.com 往往可达。
+	URL  string `json:"url"`
+	Size int64  `json:"size"`
 }
 
 type ghRelease struct {
@@ -65,6 +68,7 @@ func apiURLCandidates() []string {
 	return []string{
 		"https://api.github.com" + path,
 		"https://ghfast.top/https://api.github.com" + path,
+		"https://gh-proxy.com/https://api.github.com" + path,
 		"https://mirror.ghproxy.com/https://api.github.com" + path,
 	}
 }
@@ -74,6 +78,7 @@ func downloadURLCandidates(official string) []string {
 	return []string{
 		official,
 		"https://ghfast.top/" + official,
+		"https://gh-proxy.com/" + official,
 		"https://mirror.ghproxy.com/" + official,
 	}
 }
@@ -100,18 +105,18 @@ func (c *Checker) emit(p Progress) {
 
 // Check 拉取最新 Release 并与当前版本比较
 func (c *Checker) Check() (*Info, error) {
-	rel, err := c.fetchRelease()
+	rel, official, err := c.fetchRelease()
 	if err != nil {
 		return nil, err
 	}
-	info := buildInfo(rel, c.Current)
+	info := buildInfo(rel, c.Current, official)
 	return info, nil
 }
 
 // unwrapMirrors 剥掉国内镜像前缀，得到原始 URL 字符串。
 func unwrapMirrors(raw string) string {
 	s := strings.TrimSpace(raw)
-	for _, p := range []string{"https://ghfast.top/", "https://mirror.ghproxy.com/"} {
+	for _, p := range []string{"https://ghfast.top/", "https://gh-proxy.com/", "https://mirror.ghproxy.com/"} {
 		if strings.HasPrefix(s, p) {
 			s = strings.TrimPrefix(s, p)
 		}
@@ -235,7 +240,7 @@ func (c *Checker) DownloadAndInstall(setupURL, sha256Hex string) (string, error)
 	return dst, nil
 }
 
-func (c *Checker) fetchRelease() (*ghRelease, error) {
+func (c *Checker) fetchRelease() (*ghRelease, bool, error) {
 	var lastErr error
 	var fromMirror *ghRelease
 	for _, u := range apiURLCandidates() {
@@ -244,17 +249,17 @@ func (c *Checker) fetchRelease() (*ghRelease, error) {
 			lastErr = err
 			continue
 		}
-		// 官方 API 结果直接采用
+		// 官方 API 结果直接采用（正文哈希可信）
 		if strings.HasPrefix(u, "https://api.github.com/") {
-			return rel, nil
+			return rel, true, nil
 		}
 		// 镜像结果：尽量与官方 API 交叉比对 tag/资产名，不一致则丢弃镜像
 		if off, err := c.getRelease("https://api.github.com/repos/" + RepoOwner + "/" + RepoName + "/releases/latest"); err == nil {
 			if rel.TagName == off.TagName && len(rel.Assets) == len(off.Assets) {
-				return off, nil
+				return off, true, nil
 			}
 			// 镜像与官方不一致 → 以官方为准
-			return off, nil
+			return off, true, nil
 		}
 		if fromMirror == nil {
 			fromMirror = rel
@@ -262,10 +267,10 @@ func (c *Checker) fetchRelease() (*ghRelease, error) {
 		lastErr = fmt.Errorf("mirror release without official cross-check")
 	}
 	if fromMirror != nil {
-		// 官方完全不可达时仍回落镜像（checksums 仍只信官方，空哈希会拒装）
-		return fromMirror, nil
+		// 官方完全不可达时仍回落镜像（正文不可信；checksums 仍只信官方，空哈希会拒装）
+		return fromMirror, false, nil
 	}
-	return nil, fmt.Errorf("获取最新版本失败: %w", lastErr)
+	return nil, false, fmt.Errorf("获取最新版本失败: %w", lastErr)
 }
 
 func (c *Checker) getRelease(url string) (*ghRelease, error) {
@@ -293,7 +298,7 @@ func (c *Checker) getRelease(url string) (*ghRelease, error) {
 	return &rel, nil
 }
 
-func buildInfo(rel *ghRelease, current string) *Info {
+func buildInfo(rel *ghRelease, current string, fromOfficial bool) *Info {
 	ver := normalizeVer(rel.TagName)
 	info := &Info{
 		CurrentVersion: normalizeVer(current),
@@ -317,10 +322,16 @@ func buildInfo(rel *ghRelease, current string) *Info {
 			}
 		}
 	}
-	// 哈希只信官方 GitHub 上的 SHA256SUMS / .sha256，且按 Setup 文件名精确匹配
+	// 哈希来源（均须官方）：① 官方 API 正文（CI 写入 SHA256SUMS，免二次请求）
+	// ② api.github.com 资产端点拉 SHA256SUMS ③ 直链 github.com（国内常超时）④ sidecar
 	if setupName != "" {
-		if sum, err := parseSumsFor(setupName, rel.Assets); err == nil {
-			info.SHA256 = sum
+		if fromOfficial {
+			info.SHA256 = parseSHA256FromBody(rel.Body, setupName)
+		}
+		if info.SHA256 == "" {
+			if sum, err := parseSumsFor(setupName, rel.Assets); err == nil {
+				info.SHA256 = sum
+			}
 		}
 		if info.SHA256 == "" {
 			if sum, err := parseSidecarSHA(setupName, rel.Assets); err == nil {
@@ -332,11 +343,45 @@ func buildInfo(rel *ghRelease, current string) *Info {
 	return info
 }
 
+// parseSHA256FromBody 从 Release 正文按 Setup 文件名精确提取 SHA256（CI 在「安装校验」段写入）。
+// 仅官方 API 返回的正文可信；镜像正文可能被篡改，调用方须校验 fromOfficial。
+func parseSHA256FromBody(body, setupName string) string {
+	want := strings.ToLower(strings.TrimSpace(setupName))
+	if want == "" {
+		return ""
+	}
+	for _, line := range strings.Split(body, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 2 {
+			continue
+		}
+		name := strings.ToLower(strings.TrimPrefix(fields[1], "*"))
+		if name != want {
+			continue
+		}
+		sum := strings.ToLower(fields[0])
+		if isSHA256Hex(sum) {
+			return sum
+		}
+	}
+	return ""
+}
+
+// isOfficialAssetAPI 仅接受本仓库的 api.github.com 资产内容端点。
+func isOfficialAssetAPI(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Hostname(), "api.github.com") {
+		return false
+	}
+	prefix := "/repos/" + RepoOwner + "/" + RepoName + "/releases/assets/"
+	return strings.HasPrefix(u.Path, prefix) && !strings.Contains(u.Path, "..")
+}
+
 // formatNotes Release 说明 → 更新弹窗可读纯文本（安装/校验段去掉，Markdown 语法压平）。
 // 在 Go 侧清洗，前端拿到即可展示，避免旧前端或 <pre> 直接露出 Markdown。
 func formatNotes(md string) string {
 	s := strings.ReplaceAll(md, "\r\n", "\n")
-	// 去掉「安装 / 安装校验」整段（含包表格与哈希示例）
+	// 去掉「安装 / 安装校验」整段（含包表格、哈希与 CI 写入的 SHA256SUMS）
 	s = dropSection(s, "安装校验")
 	s = dropSection(s, "安装")
 	// 代码块 → 缩进行
@@ -426,6 +471,7 @@ var (
 )
 
 // parseSumsFor 从官方 GitHub 上的 SHA256SUMS.txt 按 Setup 文件名精确取哈希。
+// 取内容顺序：api.github.com 资产端点（国内可达）→ 直链 github.com。
 // 镜像上的 checksums 一律不采信（防同源投毒）。
 func parseSumsFor(setupName string, assets []ghAsset) (string, error) {
 	wantName := strings.ToLower(strings.TrimSpace(setupName))
@@ -437,12 +483,7 @@ func parseSumsFor(setupName string, assets []ghAsset) (string, error) {
 		if !strings.EqualFold(a.Name, "SHA256SUMS.txt") && !strings.EqualFold(a.Name, "checksums.txt") {
 			continue
 		}
-		official := toOfficialGitHub(a.BrowserDownloadURL)
-		if official == "" {
-			lastErr = fmt.Errorf("checksums asset not on official github")
-			continue
-		}
-		text, err := fetchText(official)
+		text, err := fetchChecksumsText(a)
 		if err != nil {
 			lastErr = err
 			continue
@@ -467,6 +508,47 @@ func parseSumsFor(setupName string, assets []ghAsset) (string, error) {
 		lastErr = fmt.Errorf("checksums 中无安装包条目")
 	}
 	return "", lastErr
+}
+
+// fetchChecksumsText 拉取 checksums 资产正文：优先官方 API 资产端点，失败再走官方直链。
+func fetchChecksumsText(a ghAsset) (string, error) {
+	if a.URL != "" && isOfficialAssetAPI(a.URL) {
+		if text, err := fetchAssetText(a.URL); err == nil {
+			return text, nil
+		}
+	}
+	official := toOfficialGitHub(a.BrowserDownloadURL)
+	if official == "" {
+		return "", fmt.Errorf("checksums asset not on official github")
+	}
+	return fetchText(official)
+}
+
+// fetchAssetText 经 GitHub API 资产端点读文件内容（Accept: application/octet-stream）。
+func fetchAssetText(apiURL string) (string, error) {
+	if !isOfficialAssetAPI(apiURL) {
+		return "", fmt.Errorf("asset api not official")
+	}
+	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/octet-stream")
+	req.Header.Set("User-Agent", fmt.Sprintf("%s/%s", RepoName, RepoOwner))
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // parseSidecarSHA 从官方 GitHub 上的 <setup>.sha256 旁路文件取哈希。

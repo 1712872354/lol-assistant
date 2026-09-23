@@ -41,6 +41,62 @@ func TestIsSHA256Hex(t *testing.T) {
 	}
 }
 
+// 回归：SHA256 直链（github.com）超时时，哈希必须能从官方 Release 正文解析，
+// 否则 Check 返回空 sha256 → 安装被「缺少 SHA256」拒绝。
+func TestParseSHA256FromBody(t *testing.T) {
+	sum := strings.Repeat("ab", 32)
+	body := "### 修复\r\n\r\n- x\r\n\r\n### 安装校验\r\n\r\n```text\r\n" +
+		sum + "  LOLAssistant-Setup-1.0.5.exe\r\n```\r\n"
+	if got := parseSHA256FromBody(body, "LOLAssistant-Setup-1.0.5.exe"); got != sum {
+		t.Fatalf("body hash = %q want %q", got, sum)
+	}
+	if got := parseSHA256FromBody(body, "other.exe"); got != "" {
+		t.Fatalf("name mismatch should miss, got %q", got)
+	}
+	if got := parseSHA256FromBody(body, "LOLAssistant-Setup-1.0.5.exe\x00"); got != "" {
+		t.Fatalf("invalid hash should miss, got %q", got)
+	}
+}
+
+func TestBuildInfo_BodySHA256WithoutAssetFetch(t *testing.T) {
+	sum := strings.Repeat("cd", 32)
+	rel := &ghRelease{
+		TagName: "v2.0.0",
+		Body: "### 修复\r\n\r\n- x\r\n\r\n### 安装校验\r\n\r\n```text\r\n" +
+			sum + "  LOLAssistant-Setup-2.0.0.exe\r\n```\r\n",
+		Assets: []ghAsset{{
+			Name:               "LOLAssistant-Setup-2.0.0.exe",
+			BrowserDownloadURL: "https://github.com/1712872354/lol-assistant/releases/download/v2.0.0/LOLAssistant-Setup-2.0.0.exe",
+		}},
+	}
+	info := buildInfo(rel, "v1.0.0", true)
+	if info.SHA256 != sum {
+		t.Fatalf("sha256=%q want %q（正文哈希应免二次网络）", info.SHA256, sum)
+	}
+	if !info.HasUpdate || info.Version != "2.0.0" {
+		t.Fatalf("update meta: %+v", info)
+	}
+}
+
+func TestIsOfficialAssetAPI(t *testing.T) {
+	ok := "https://api.github.com/repos/1712872354/lol-assistant/releases/assets/123"
+	if !isOfficialAssetAPI(ok) {
+		t.Fatalf("official asset api rejected: %s", ok)
+	}
+	bad := []string{
+		"",
+		"http://api.github.com/repos/1712872354/lol-assistant/releases/assets/1",
+		"https://evil.com/repos/1712872354/lol-assistant/releases/assets/1",
+		"https://api.github.com/repos/other/repo/releases/assets/1",
+		"https://github.com/1712872354/lol-assistant/releases/download/v1/x.txt",
+	}
+	for _, u := range bad {
+		if isOfficialAssetAPI(u) {
+			t.Fatalf("bad asset api accepted: %s", u)
+		}
+	}
+}
+
 func TestDownloadAndInstallRejectsEmptyHash(t *testing.T) {
 	c := New("v0.0.1")
 	u := "https://github.com/1712872354/lol-assistant/releases/download/v1/LOLAssistant-Setup-1.exe"
