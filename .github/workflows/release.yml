@@ -161,8 +161,12 @@ jobs:
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           [System.IO.Compression.ZipFile]::CreateFromDirectory($stageRoot, $portPath)
 
-          # 签名 portable zip
-          pnpm tauri signer sign $portPath --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          # 签名 portable zip（空密码时不传 --password，clap 不接受空值）
+          if ([string]::IsNullOrEmpty($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            pnpm tauri signer sign $portPath --private-key "$env:TAURI_SIGNING_PRIVATE_KEY"
+          } else {
+            pnpm tauri signer sign $portPath --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          }
           $portSig = "$portPath.sig"
           if (-not (Test-Path $portSig)) {
             Write-Error "Portable zip .sig missing"
