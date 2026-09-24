@@ -21,7 +21,14 @@ fn q(id: i32, name: &str, short: &str, map: &str, arena: bool) -> QueueInfo {
 }
 
 /// 队列映射表（国服优先；未收录 ID 走 fallback）
-fn queue_table() -> std::collections::HashMap<i32, QueueInfo> {
+fn queue_table() -> &'static std::collections::HashMap<i32, QueueInfo> {
+    use std::collections::HashMap;
+    use std::sync::OnceLock;
+    static TABLE: OnceLock<HashMap<i32, QueueInfo>> = OnceLock::new();
+    TABLE.get_or_init(build_queue_table)
+}
+
+fn build_queue_table() -> std::collections::HashMap<i32, QueueInfo> {
     use std::collections::HashMap;
     let mut m = HashMap::new();
     let entries: &[(i32, &str, &str, &str, bool)] = &[
@@ -74,6 +81,19 @@ pub fn queue_info_for(queue_id: i32) -> QueueInfo {
         short: queue_id.to_string(),
         map: "未知".into(),
         arena: false,
+    }
+}
+
+#[cfg(test)]
+mod t34_tests {
+    use super::*;
+
+    /// T3.4 回归：队列表必须构建一次复用（静态表），不得每次查询重建。
+    #[test]
+    fn queue_table_is_built_once() {
+        let a: &'static std::collections::HashMap<i32, QueueInfo> = queue_table();
+        let b: &'static std::collections::HashMap<i32, QueueInfo> = queue_table();
+        assert!(std::ptr::eq(a, b), "queue_table 必须返回同一静态实例");
     }
 }
 

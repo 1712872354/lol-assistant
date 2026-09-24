@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod error;
 pub mod lcu;
 pub mod liveclient;
 pub mod logging;
@@ -8,6 +9,7 @@ pub mod portable_updater;
 pub mod service;
 pub mod sgp;
 pub mod update;
+pub mod util;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -56,7 +58,7 @@ pub fn run() {
             let hist_api: Arc<dyn HistApi> = hist.clone();
             let live_api: Arc<dyn LiveApi> = live;
             let game = Arc::new(GameinfoService::new(http, hist_api, live_api));
-            game.set_career_limit(cfg.page_size as i32);
+            game.set_career_limit(cfg.career_limit as i32);
 
             let force_quit = Arc::new(AtomicBool::new(false));
             app.manage(AppState {
@@ -249,4 +251,21 @@ fn fit_window_to_screen(app: &tauri::AppHandle) {
 /// 返回 true 表示当前进程是更新 helper 且已处理完毕，main 应立即 return。
 pub fn run_portable_update_helper_if_requested() -> bool {
     portable_updater::run_helper_if_requested()
+}
+
+#[cfg(test)]
+mod tests {
+    /// T2.2 回归：WebView CSP 不得为 null（禁用）——前端渲染对手数据，需保留纵深防御。
+    #[test]
+    fn webview_csp_is_enforced() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = conf["app"]["security"]["csp"].as_str();
+        assert!(csp.is_some(), "CSP 不得为 null（禁用）");
+        let csp = csp.unwrap();
+        assert!(csp.contains("default-src 'self'"), "CSP={csp}");
+        assert!(csp.contains("img-src 'self'"), "CSP={csp}");
+        assert!(csp.contains("style-src 'self'"), "CSP={csp}");
+        assert!(!csp.contains("unsafe-eval"), "禁止 unsafe-eval: {csp}");
+    }
 }

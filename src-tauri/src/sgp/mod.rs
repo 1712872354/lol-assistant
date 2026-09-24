@@ -106,7 +106,14 @@ fn http_client() -> reqwest::Client {
         .expect("build sgp http client")
 }
 
-async fn sgp_get(url: &str, token: &str) -> Result<Vec<u8>, String> {
+/// SGP 并发闸门（对齐 LCU 闸门思想）：防打爆腾讯接口风控。
+static SGP_GATE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+
+async fn sgp_get(url: &str, token: &str) -> Result<Vec<u8>, crate::error::AppError> {
+    let _permit = SGP_GATE
+        .acquire()
+        .await
+        .map_err(|e| crate::error::AppError::Http(format!("sgp gate: {e}")))?;
     let client = http_client();
     let resp = client
         .get(url)
@@ -125,7 +132,10 @@ async fn sgp_get(url: &str, token: &str) -> Result<Vec<u8>, String> {
         return Err("sgp body too large".into());
     }
     if !status.is_success() {
-        return Err(format!("sgp http {}", status.as_u16()));
+        return Err(crate::error::AppError::Http(format!(
+            "sgp http {}",
+            status.as_u16()
+        )));
     }
     Ok(bytes.to_vec())
 }
@@ -134,7 +144,7 @@ pub async fn fetch_ranked_stats(
     host: &str,
     puuid: &str,
     token: &str,
-) -> Result<RankedStats, String> {
+) -> Result<RankedStats, crate::error::AppError> {
     if host.is_empty() || puuid.is_empty() || token.is_empty() {
         return Err("sgp: missing host/puuid/token".into());
     }
@@ -144,7 +154,8 @@ pub async fn fetch_ranked_stats(
         path_escape(puuid)
     );
     let body = sgp_get(&url, token).await?;
-    serde_json::from_slice(&body).map_err(|e| format!("sgp parse failed: {e}"))
+    serde_json::from_slice(&body)
+        .map_err(|e| crate::error::AppError::Parse(format!("sgp parse failed: {e}")))
 }
 
 pub async fn fetch_match_history(
@@ -153,7 +164,7 @@ pub async fn fetch_match_history(
     token: &str,
     start_index: i32,
     count: i32,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, crate::error::AppError> {
     if host.is_empty() || puuid.is_empty() || token.is_empty() {
         return Err("sgp: missing host/puuid/token".into());
     }
@@ -169,10 +180,8 @@ pub async fn fetch_match_history(
     sgp_get(&url, token).await
 }
 
-fn path_escape(s: &str) -> String {
-    // 简化：puuid 为 UUID 形态，无需复杂转义；防注入走 valid 校验
-    s.replace('/', "%2F")
-}
+// 转义走 crate::util 完整 percent-encode（原本地实现仅转义 `/`，query 元字符未编码）
+use crate::util::path_escape;
 
 /* ── SGP 认证凭据（LCU 端点取数；注入 getter 保持零 LCU 依赖） ── */
 
@@ -180,24 +189,28 @@ const LCU_PATH_LEAGUE_SESSION_TOKEN: &str = "/lol-league-session/v1/league-sessi
 const LCU_PATH_ENTITLEMENTS_TOKEN: &str = "/entitlements/v1/token";
 
 /// LCU GET 函数签名（注入 lcu.Client 方法值；测试注入假实现）
-pub type LcuGetter = Box<dyn Fn(&str) -> Result<(u16, Vec<u8>), String>>;
+pub type LcuGetter = Box<dyn Fn(&str) -> Result<(u16, Vec<u8>), crate::error::AppError>>;
 
-pub fn fetch_league_session_token(get: &LcuGetter) -> Result<String, String> {
+pub fn fetch_league_session_token(get: &LcuGetter) -> Result<String, crate::error::AppError> {
     fetch_lcu_token(get, LCU_PATH_LEAGUE_SESSION_TOKEN, "")
 }
 
-pub fn fetch_entitlements_token(get: &LcuGetter) -> Result<String, String> {
+pub fn fetch_entitlements_token(get: &LcuGetter) -> Result<String, crate::error::AppError> {
     fetch_lcu_token(get, LCU_PATH_ENTITLEMENTS_TOKEN, "accessToken")
 }
 
-fn fetch_lcu_token(get: &LcuGetter, path: &str, json_field: &str) -> Result<String, String> {
+fn fetch_lcu_token(
+    get: &LcuGetter,
+    path: &str,
+    json_field: &str,
+) -> Result<String, crate::error::AppError> {
     let (status, body) = get(path)?;
     if !(200..300).contains(&status) {
-        return Err(format!("sgp token {path}: http {status}"));
+        return Err(format!("sgp token {path}: http {status}").into());
     }
     let tok = parse_token_body(&body, json_field);
     if tok.is_empty() {
-        return Err(format!("sgp token {path}: empty token"));
+        return Err(format!("sgp token {path}: empty token").into());
     }
     Ok(tok)
 }
@@ -277,7 +290,7 @@ mod tests {
         assert!(fetch_league_session_token(&get).is_err());
         let get: LcuGetter = Box::new(|_| Ok((404, vec![])));
         let err = fetch_league_session_token(&get).unwrap_err();
-        assert!(err.contains("404"), "err={err}");
+        assert!(err.to_string().contains("404"), "err={err}");
         let get: LcuGetter = Box::new(|_| Err("conn refused".into()));
         assert!(fetch_league_session_token(&get).is_err());
     }
@@ -300,7 +313,7 @@ mod tests {
         );
         let get: LcuGetter = Box::new(|_| Ok((403, vec![])));
         let err = fetch_entitlements_token(&get).unwrap_err();
-        assert!(err.contains("403"));
+        assert!(err.to_string().contains("403"));
     }
 
     #[test]
@@ -376,5 +389,55 @@ mod tests {
         assert_eq!(stats.queues[1].tier, "PLATINUM");
         assert_eq!(stats.queues[1].div(), "I");
         assert_eq!(stats.queues[1].league_points, 91);
+    }
+
+    /// T3.4 回归：SGP 并发放量必须封顶（≤2），防打爆腾讯接口风控。
+    #[tokio::test]
+    async fn sgp_concurrency_is_bounded() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let peak = Arc::new(AtomicUsize::new(0));
+        let cur = Arc::new(AtomicUsize::new(0));
+        let peak_w = peak.clone();
+        let cur_w = cur.clone();
+        std::thread::spawn(move || {
+            let peak = peak_w;
+            let cur = cur_w;
+            for stream in listener.incoming() {
+                let Ok(mut s) = stream else { continue };
+                let peak = peak.clone();
+                let cur = cur.clone();
+                std::thread::spawn(move || {
+                    let now = cur.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    let mut buf = [0u8; 2048];
+                    let _ = s.read(&mut buf);
+                    std::thread::sleep(std::time::Duration::from_millis(120));
+                    let body = "[]";
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = s.write_all(resp.as_bytes());
+                    cur.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
+        });
+
+        let url = format!("http://127.0.0.1:{port}/match-history-query/v1/products/lol/player/x/SUMMARY?startIndex=0&count=20");
+        let futs: Vec<_> = (0..3).map(|_| sgp_get(&url, "t")).collect();
+        let results = futures_util::future::join_all(futs).await;
+        for r in results {
+            let _ = r;
+        }
+        let p = peak.load(Ordering::SeqCst);
+        assert!(p <= 2, "SGP 并发峰值 {p} 超出闸门 2");
+        assert!(p >= 1);
     }
 }

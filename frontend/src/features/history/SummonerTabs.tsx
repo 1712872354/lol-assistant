@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import { errMsg, fetchMatches, fetchSelfSummoner, searchSummoner } from "./api";
-import { AssetImg } from "./AssetImg";
+import { AssetImg } from "@/lib/AssetImg";
 
 interface Props {
   onRefresh: () => void;
@@ -91,10 +91,8 @@ export function SummonerTabs({ onRefresh }: Props) {
         {tabs.map((t) => {
           const active = t.id === activeTabId;
           return (
-            <button
+            <div
               key={t.id}
-              type="button"
-              onClick={() => setActive(t.id)}
               className={cn(
                 "group flex h-8 max-w-[220px] min-w-0 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-colors",
                 active
@@ -102,12 +100,18 @@ export function SummonerTabs({ onRefresh }: Props) {
                   : "border-transparent text-muted-foreground hover:bg-card/60",
               )}
             >
-              <AssetImg kind="profile" id={t.iconId} size={16} className="rounded-full" />
-              <span className="truncate">{t.name.split("#")[0] || t.name}</span>
-              <span
-                role="button"
+              <button
+                type="button"
+                onClick={() => setActive(t.id)}
+                className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+              >
+                <AssetImg kind="profile" id={t.iconId} size={16} className="rounded-full" />
+                <span className="truncate">{t.name.split("#")[0] || t.name}</span>
+              </button>
+              {/* 关闭按钮：与选择按钮为兄弟节点（避免嵌套交互），且键盘可达 */}
+              <button
+                type="button"
                 aria-label="关闭标签"
-                tabIndex={-1}
                 onClick={(e) => {
                   e.stopPropagation();
                   closeTab(t.id);
@@ -115,8 +119,8 @@ export function SummonerTabs({ onRefresh }: Props) {
                 className="rounded p-0.5 opacity-60 transition-opacity hover:bg-muted hover:opacity-100"
               >
                 <X className="h-3 w-3" />
-              </span>
-            </button>
+              </button>
+            </div>
           );
         })}
       </div>

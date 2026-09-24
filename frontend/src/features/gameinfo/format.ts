@@ -1,3 +1,4 @@
+import { UNRANKED } from "@/lib/rank";
 /** 对局页玩家卡格式化辅助 */
 
 /** 相对时间："刚刚" / "10 分钟前" / "10 小时前" / "3 天前"；无时间戳或超过 30 天回退兜底文案 */
@@ -18,7 +19,7 @@ export function relTime(ms?: number, fallback = ""): string {
 /** "黄金 IV 45" → { main: "黄金 IV", lp: "45" }；无 LP 整体进 main；空/未定级返回空 */
 export function splitRank(s?: string): { main: string; lp: string } {
   const t = (s ?? "").trim();
-  if (!t || t === "未定级") return { main: "", lp: "" };
+  if (!t || t === UNRANKED) return { main: "", lp: "" };
   const m = /^(.*\S)\s+(\d+)$/.exec(t);
   if (m) return { main: m[1], lp: m[2] };
   return { main: t, lp: "" };

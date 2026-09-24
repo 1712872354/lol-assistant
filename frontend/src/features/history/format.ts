@@ -1,3 +1,4 @@
+import { UNRANKED } from "@/lib/rank";
 import type { MatchSummary, PlayerRow, RankedInfo } from "@/lib/types";
 
 /** 大数字缩写：69400 → "69.4K"（底部汇总条样式） */
@@ -16,44 +17,10 @@ export function fmtNum(n: number): string {
 }
 
 /** 国服段位中→英映射（长名在前，startsWith 匹配；列表头 GOLD IV 45 风格） */
-const TIER_EN: ReadonlyArray<readonly [string, string]> = [
-  ["最强王者", "CHALLENGER"],
-  ["傲世宗师", "GRANDMASTER"],
-  ["璀璨钻石", "DIAMOND"],
-  ["流光翡翠", "EMERALD"],
-  ["华贵铂金", "PLATINUM"],
-  ["荣耀黄金", "GOLD"],
-  ["不屈白银", "SILVER"],
-  ["英勇黄铜", "BRONZE"],
-  ["坚韧黑铁", "IRON"],
-  ["王者", "CHALLENGER"],
-  ["宗师", "GRANDMASTER"],
-  ["大师", "MASTER"],
-  ["钻石", "DIAMOND"],
-  ["翡翠", "EMERALD"],
-  ["铂金", "PLATINUM"],
-  ["白金", "PLATINUM"],
-  ["黄金", "GOLD"],
-  ["白银", "SILVER"],
-  ["黄铜", "BRONZE"],
-  ["青铜", "BRONZE"],
-  ["黑铁", "IRON"],
-];
 
-/** "黄金 IV 45" → "GOLD IV 45"；未知段位原样返回，未定级/空返回空串 */
-export function tierToEn(cn: string): string {
-  const s = (cn ?? "").trim();
-  if (!s || s === "未定级") return "";
-  for (const [zh, en] of TIER_EN) {
-    if (s.startsWith(zh)) {
-      const rest = s.slice(zh.length).trim();
-      return rest ? `${en} ${rest}` : en;
-    }
-  }
-  return s;
-}
 
-export type Tone = "win" | "loss" | "remake";
+export type { Tone } from "@/lib/tone";
+import type { Tone } from "@/lib/tone";
 
 /** 战绩卡片结果标签与色调（参考截图：胜=绿 负=红 重赛=灰） */
 export function resultOf(s: MatchSummary): { label: string; tone: Tone } {
@@ -67,12 +34,12 @@ export function resultOf(s: MatchSummary): { label: string; tone: Tone } {
 /** 段位徽章展示：实时单双排 > 灵活排位 > 历史最高 tierShort > 未定级 */
 export function rankedDisplay(row: PlayerRow, ranked?: RankedInfo): string {
   const solo = (ranked?.solo ?? "").trim();
-  if (solo && solo !== "未定级") return solo;
+  if (solo && solo !== UNRANKED) return solo;
   const flex = (ranked?.flex ?? "").trim();
-  if (flex && flex !== "未定级") return flex;
+  if (flex && flex !== UNRANKED) return flex;
   const hist = (row.tierShort ?? "").trim();
   if (hist) return hist;
-  return "未定级";
+  return UNRANKED;
 }
 
 /** id 归一化：summonerId 可能是 number，与 RankedInfo 键对齐 */
@@ -85,7 +52,7 @@ export function normId(v: unknown): string {
 export function buildRankedMap(rows: RankedInfo[] | undefined): Map<string, RankedInfo> {
   const m = new Map<string, RankedInfo>();
   for (const r of rows ?? []) {
-    const sid = normId(r.summonerId);
+    const sid = normId(r.queryId);
     const puuid = normId(r.puuid);
     if (sid) m.set(sid, r);
     if (puuid) m.set(puuid, r);
@@ -109,7 +76,7 @@ export function lookupRanked(
     if (!first) first = r;
     const solo = (r?.solo ?? "").trim();
     const flex = (r?.flex ?? "").trim();
-    if ((solo && solo !== "未定级") || (flex && flex !== "未定级")) return r;
+    if ((solo && solo !== UNRANKED) || (flex && flex !== UNRANKED)) return r;
   }
   return first;
 }

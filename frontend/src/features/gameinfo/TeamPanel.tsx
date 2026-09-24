@@ -1,12 +1,15 @@
 import type { GameinfoTeamView } from "@/lib/types";
+import { THREAT_FILL, type ThreatTone } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { PlayerSlotCard } from "./PlayerSlotCard";
 
 interface Props {
+  /** 阶段文案（由 GameInfoView 以 lib/phase 单点口径传入） */
+  phaseLabel: string;
   team: GameinfoTeamView;
   offline: boolean;
   /** 对方队伍统计（用于表头对照条；单侧筛选时可空） */
-  opponent?: Pick<GameinfoTeamView, "winRate" | "compScore" | "rating">;
+  opponent?: Pick<GameinfoTeamView, "winRate" | "teamScore">;
 }
 
 /** 表头统计 chip：灰底药丸 + 可选相对条 */
@@ -22,17 +25,10 @@ function StatChip({
   value: string;
   valueClass?: string;
   barPct?: number;
-  barTone?: "good" | "mid" | "bad" | "muted";
+  barTone?: ThreatTone;
   title?: string;
 }) {
-  const bar =
-    barTone === "good"
-      ? "bg-emerald-500/70"
-      : barTone === "bad"
-        ? "bg-red-500/65"
-        : barTone === "mid"
-          ? "bg-amber-500/65"
-          : "bg-muted-foreground/35";
+  const bar = THREAT_FILL[barTone ?? "muted"];
   return (
     <span
       title={title}
@@ -55,13 +51,13 @@ function StatChip({
 }
 
 /** 对局页队伍区块：淡色面板 + 对照统计 + 5 卡槽 */
-export function TeamPanel({ team, offline, opponent }: Props) {
+export function TeamPanel({ team, offline, opponent, phaseLabel }: Props) {
   const ally = team.key === "ally";
   const firstEmpty = team.slots.findIndex((s) => !s.filled);
 
   // 对方在场时做差值色档，单侧视图退回绝对阈值
   const wrDiff = opponent ? team.winRate - opponent.winRate : 0;
-  const ratingDiff = opponent ? team.rating - opponent.rating : 0;
+  const ratingDiff = opponent ? team.teamScore - opponent.teamScore : 0;
   const wrTone = opponent
     ? wrDiff >= 2
       ? "good"
@@ -105,7 +101,7 @@ export function TeamPanel({ team, offline, opponent }: Props) {
           {team.badge}
         </span>
         <span className="text-[11px] text-muted-foreground">
-          {team.playerCount} 人 · 阶段 {offline ? "—" : team.phaseLabel}
+          {team.playerCount} 人 · 阶段 {offline ? "—" : phaseLabel}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           <StatChip
@@ -117,18 +113,10 @@ export function TeamPanel({ team, offline, opponent }: Props) {
             title={opponent ? `相对对方 ${wrDiff >= 0 ? "+" : ""}${wrDiff.toFixed(1)}%` : "近况平均胜率"}
           />
           <StatChip
-            label="阵容"
-            value={`${team.compScore.toFixed(1)}%`}
-            valueClass="text-foreground"
-            barPct={team.compScore}
-            barTone="muted"
-            title="阵容完整度/熟练度粗评"
-          />
-          <StatChip
             label="评分"
-            value={String(team.rating)}
+            value={String(team.teamScore)}
             valueClass={ratingTone === "good" ? "text-good-fg" : ratingTone === "bad" ? "text-destructive" : "text-foreground"}
-            barPct={Math.min(100, team.rating)}
+            barPct={Math.min(100, team.teamScore)}
             barTone={ratingTone}
             title={opponent ? `相对对方 ${ratingDiff >= 0 ? "+" : ""}${ratingDiff}` : "队伍综合评分"}
           />

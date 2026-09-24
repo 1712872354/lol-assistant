@@ -26,8 +26,8 @@ export const QUEUE_TYPE_OPTIONS: QueueTypeOption[] = [
 export type QueueFilterKey = "follow" | "all" | (string & {});
 
 /** key → 后端 GetGameflowState queueFilter 参数（[-1]=跟随；[]=全部；其余=队列 id 集） */
-export function queueFilterArgs(key: QueueFilterKey): number[] {
-  if (key === "follow") return [-1];
+export function queueFilterArgs(key: QueueFilterKey): number[] | undefined {
+  if (key === "follow") return undefined;
   if (key === "all") return [];
   return QUEUE_TYPE_OPTIONS.find((o) => o.key === key)?.ids ?? [];
 }

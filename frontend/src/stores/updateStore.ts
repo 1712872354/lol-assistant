@@ -41,9 +41,6 @@ export interface UpdateInfo {
   version: string;
   notes: string;
   pubDate: string;
-  setupUrl: string;
-  portableUrl: string;
-  sha256: string;
   releaseUrl: string;
 }
 
@@ -126,7 +123,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
 
     try {
       // 严格调用：失败必须进 catch，不能把 null 当成功
-      // tauri-plugin-updater 流程：后端自行 check + download + install，无需 setupUrl/sha256
+      // tauri-plugin-updater 流程：后端自行 check + download + install（minisign 验签在插件内）
       await callAppStrict<void>("DownloadAndInstallUpdate");
       set({
         installing: false,

@@ -4,12 +4,20 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+#[cfg(test)]
+use std::time::Duration;
+use std::time::Instant;
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::asset_cache::AssetCache;
+use super::key_gate::KeyGate;
+use super::sgp_tokens::{
+    default_sgp_match, default_sgp_ranked, SgpMatchFetch, SgpRankedFetch, SgpTokens, TokenCache,
+    SGP_TOKEN_ERR_TTL, SGP_TOKEN_TTL,
+};
 use crate::lcu::endpoints::{
     PATH_ENTITLEMENTS_TOKEN, PATH_GD_AUGMENTS, PATH_GD_CHAMPION_ICON, PATH_GD_ITEMS,
     PATH_GD_ITEM_ICON, PATH_GD_PERKS, PATH_GD_PROFILE_ICON, PATH_GD_SPELLS,
@@ -24,9 +32,9 @@ use crate::parser::{
     parse_match_detail, parse_match_summaries, parse_sgp_summaries, tier_cn, MatchDetail,
     MatchSummary,
 };
-use crate::service::http::{path_escape, query_escape, BoxFut, LcuHttp};
+use crate::service::http::{path_escape, query_escape, LcuHttp};
 
-pub const ERR_NOT_CONNECTED: &str = "LCU 未连接，请先启动英雄联盟客户端并登录";
+pub use crate::error::ERR_NOT_CONNECTED;
 
 pub const ASSET_CHAMPION: &str = "champion";
 pub const ASSET_PROFILE: &str = "profile";
@@ -36,10 +44,6 @@ pub const ASSET_PERK: &str = "perk";
 pub const ASSET_AUGMENT: &str = "augment";
 
 const UNRANKED: &str = "未定级";
-const SGP_TOKEN_TTL: Duration = Duration::from_secs(5 * 60);
-const SGP_TOKEN_ERR_TTL: Duration = Duration::from_secs(15);
-const INDEX_TTL: Duration = Duration::from_secs(10 * 60);
-const MAX_BYTE_ENTRIES: usize = 1024;
 
 /* ── 输出视图模型 ─────────────────────────────────────────── */
 
@@ -60,9 +64,12 @@ pub struct SummonerResult {
 pub struct MatchPage {
     pub puuid: String,
     pub page: i32,
-    pub page_size: i32,
-    pub game_count: i32,
-    pub total_pages: i32,
+    /// 真实总场数（权威，来自 LCU gameCount）；来源无权威总数时为 None（SGP / LCU 缺 gameCount）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<i32>,
+    /// 总页数（由权威 total 推导）；total 未知时为 None，不再给启发式伪页数
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_pages: Option<i32>,
     pub has_more: bool,
     pub summaries: Vec<MatchSummary>,
 }
@@ -70,7 +77,7 @@ pub struct MatchPage {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RankedInfo {
-    pub summoner_id: String,
+    pub query_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub puuid: String,
     pub solo: String,
@@ -86,130 +93,7 @@ pub struct AssetResult {
     pub data: String,
 }
 
-/* ── SGP 拉取注入 ─────────────────────────────────────────── */
-
-pub type SgpRankedFetch = Arc<
-    dyn Fn(String, String, String) -> BoxFut<'static, Result<crate::sgp::RankedStats, String>>
-        + Send
-        + Sync,
->;
-pub type SgpMatchFetch = Arc<
-    dyn Fn(String, String, String, i32, i32) -> BoxFut<'static, Result<Vec<u8>, String>>
-        + Send
-        + Sync,
->;
-
-fn default_sgp_ranked() -> SgpRankedFetch {
-    Arc::new(|host, puuid, token| {
-        Box::pin(async move { crate::sgp::fetch_ranked_stats(&host, &puuid, &token).await })
-    })
-}
-
-fn default_sgp_match() -> SgpMatchFetch {
-    Arc::new(|host, puuid, token, start, count| {
-        Box::pin(async move {
-            crate::sgp::fetch_match_history(&host, &puuid, &token, start, count).await
-        })
-    })
-}
-
-#[derive(Clone, Default)]
-struct SgpTokens {
-    session: String,
-    entitlements: String,
-}
-
-impl SgpTokens {
-    fn ranked(&self) -> Vec<String> {
-        non_empty(&self.session, &self.entitlements)
-    }
-    fn matched(&self) -> Vec<String> {
-        non_empty(&self.entitlements, &self.session)
-    }
-}
-
-fn non_empty(a: &str, b: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    if !a.is_empty() {
-        out.push(a.to_string());
-    }
-    if !b.is_empty() && b != a {
-        out.push(b.to_string());
-    }
-    out
-}
-
-struct TokenCache {
-    toks: SgpTokens,
-    at: Option<Instant>,
-    ttl: Duration,
-}
-
-impl TokenCache {
-    fn new() -> Self {
-        Self {
-            toks: SgpTokens::default(),
-            at: None,
-            ttl: Duration::ZERO,
-        }
-    }
-
-    fn valid(&self) -> bool {
-        self.ttl > Duration::ZERO && self.at.map(|at| at.elapsed() < self.ttl).unwrap_or(false)
-    }
-}
-
-/* ── 资源缓存 ─────────────────────────────────────────────── */
-
-struct AssetCacheInner {
-    bytes: HashMap<String, (String, String)>,
-    indexes: HashMap<String, (Instant, HashMap<i32, String>)>,
-}
-
-#[derive(Clone)]
-struct AssetCache {
-    inner: Arc<Mutex<AssetCacheInner>>,
-}
-
-impl AssetCache {
-    fn new() -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(AssetCacheInner {
-                bytes: HashMap::new(),
-                indexes: HashMap::new(),
-            })),
-        }
-    }
-
-    fn get_bytes(&self, key: &str) -> Option<(String, String)> {
-        self.inner.lock().unwrap().bytes.get(key).cloned()
-    }
-
-    fn put_bytes(&self, key: &str, mime: String, data: String) {
-        let mut g = self.inner.lock().unwrap();
-        if g.bytes.len() >= MAX_BYTE_ENTRIES {
-            g.bytes.clear();
-        }
-        g.bytes.insert(key.to_string(), (mime, data));
-    }
-
-    fn get_index(&self, path: &str) -> Option<HashMap<i32, String>> {
-        let g = self.inner.lock().unwrap();
-        g.indexes
-            .get(path)
-            .filter(|(at, _)| at.elapsed() < INDEX_TTL)
-            .map(|(_, m)| m.clone())
-    }
-
-    fn put_index(&self, path: &str, paths: HashMap<i32, String>) {
-        self.inner
-            .lock()
-            .unwrap()
-            .indexes
-            .insert(path.to_string(), (Instant::now(), paths));
-    }
-}
-
+// SGP token 缓存见 sgp_tokens.rs；资源缓存见 asset_cache.rs
 /* ── 服务 ─────────────────────────────────────────────────── */
 
 pub struct HistoryService {
@@ -218,6 +102,8 @@ pub struct HistoryService {
     sgp_enabled: AtomicBool,
     assets: AssetCache,
     tok: Mutex<TokenCache>,
+    /// 同 key 并发合并（SGP token）
+    inflight: KeyGate,
     sgp_ranked: SgpRankedFetch,
     sgp_match: SgpMatchFetch,
     #[cfg(test)]
@@ -237,6 +123,7 @@ impl HistoryService {
             sgp_enabled: AtomicBool::new(true),
             assets: AssetCache::new(),
             tok: Mutex::new(TokenCache::new()),
+            inflight: KeyGate::new(),
             sgp_ranked: default_sgp_ranked(),
             sgp_match: default_sgp_match(),
             #[cfg(test)]
@@ -278,17 +165,20 @@ impl HistoryService {
         *self.tok_err_ttl.lock().unwrap() = d;
     }
 
-    async fn ensure_connected(&self) -> Result<(), String> {
+    async fn ensure_connected(&self) -> Result<(), crate::error::AppError> {
         let st = self.http.status().await;
         if st.state != State::Connected {
-            return Err(ERR_NOT_CONNECTED.to_string());
+            return Err(crate::error::AppError::NotConnected);
         }
         Ok(())
     }
 
     /* ── 召唤师查询 ── */
 
-    pub async fn search_summoner(&self, name: &str) -> Result<SummonerResult, String> {
+    pub async fn search_summoner(
+        &self,
+        name: &str,
+    ) -> Result<SummonerResult, crate::error::AppError> {
         let name = name.trim();
         if name.is_empty() {
             return Err("请输入召唤师昵称或 Riot ID（昵称#TAG）".into());
@@ -297,15 +187,21 @@ impl HistoryService {
         let path = format!("{PATH_SUMMONERS_BY_NAME}?name={}", query_escape(name));
         let (status, body) = self.http.get(&path).await?;
         if status == 404 {
-            return Err(format!("未找到召唤师「{name}」，请检查昵称#TAG"));
+            return Err(crate::error::AppError::NotFound(format!(
+                "未找到召唤师「{name}」，请检查昵称#TAG"
+            )));
         }
         if !(200..300).contains(&status) {
-            return Err(format!("查询召唤师失败: HTTP {status}"));
+            return Err(crate::error::AppError::Http(format!(
+                "查询召唤师失败: HTTP {status}"
+            )));
         }
-        let raw: SummonerRaw =
-            serde_json::from_slice(&body).map_err(|e| format!("解析召唤师数据失败: {e}"))?;
+        let raw: SummonerRaw = serde_json::from_slice(&body)
+            .map_err(|e| crate::error::AppError::Parse(format!("解析召唤师数据失败: {e}")))?;
         if raw.puuid.is_empty() {
-            return Err(format!("未找到召唤师「{name}」，请检查昵称#TAG"));
+            return Err(crate::error::AppError::NotFound(format!(
+                "未找到召唤师「{name}」，请检查昵称#TAG"
+            )));
         }
         Ok(SummonerResult {
             display_name: display_name_of(&raw.game_name, &raw.tag_line, &raw.display_name),
@@ -318,7 +214,7 @@ impl HistoryService {
         })
     }
 
-    pub async fn get_self_summoner(&self) -> Result<SummonerResult, String> {
+    pub async fn get_self_summoner(&self) -> Result<SummonerResult, crate::error::AppError> {
         let st = self.http.status().await;
         if st.state != State::Connected {
             return Err("客户端未登录，无法获取当前召唤师".into());
@@ -358,7 +254,11 @@ impl HistoryService {
 
     /* ── 战绩列表 ── */
 
-    pub async fn get_matches(&self, puuid: &str, page: i32) -> Result<MatchPage, String> {
+    pub async fn get_matches(
+        &self,
+        puuid: &str,
+        page: i32,
+    ) -> Result<MatchPage, crate::error::AppError> {
         let puuid = puuid.trim();
         if puuid.is_empty() {
             return Err("缺少召唤师 puuid".into());
@@ -379,29 +279,27 @@ impl HistoryService {
         );
         let (status, body) = self.http.get(&path).await?;
         if status == 404 {
-            return Err("未找到战绩数据（该账号近期无对局记录）".into());
-        }
-        if !(200..300).contains(&status) {
-            return Err(format!(
-                "获取战绩失败: HTTP {status}（国服查询他人战绩可能受限）"
+            return Err(crate::error::AppError::NotFound(
+                "未找到战绩数据（该账号近期无对局记录）".into(),
             ));
         }
-
-        let (summaries, game_count) = parse_match_summaries(&body, puuid)?;
-        let total_pages = if game_count > 0 {
-            (game_count + page_size - 1) / page_size
-        } else {
-            1
-        };
-        let mut has_more = (beg + summaries.len() as i32) < game_count;
-        if game_count <= 0 {
-            has_more = (summaries.len() as i32) >= page_size;
+        if !(200..300).contains(&status) {
+            return Err(crate::error::AppError::Http(format!(
+                "获取战绩失败: HTTP {status}（国服查询他人战绩可能受限）"
+            )));
         }
+
+        let (summaries, total) = parse_match_summaries(&body, puuid)?;
+        let total_pages = total.map(|t| (t + page_size - 1) / page_size);
+        let has_more = match total {
+            Some(t) => (beg + summaries.len() as i32) < t,
+            // 无权威总数：本页拉满才认为可能还有下一页
+            None => (summaries.len() as i32) >= page_size,
+        };
         Ok(MatchPage {
             puuid: puuid.to_string(),
             page,
-            page_size,
-            game_count,
+            total,
             total_pages,
             has_more,
             summaries,
@@ -449,16 +347,12 @@ impl HistoryService {
             return None;
         }
         let has_more = (summaries.len() as i32) >= page_size;
-        let mut total_pages = page + 1;
-        if has_more {
-            total_pages += 1;
-        }
+        // SGP 无权威总场数：total/total_pages 保持 None，不用已扫描下标冒充总数
         Some(MatchPage {
             puuid: puuid.to_string(),
             page,
-            page_size,
-            game_count: beg + summaries.len() as i32,
-            total_pages,
+            total: None,
+            total_pages: None,
             has_more,
             summaries,
         })
@@ -470,7 +364,7 @@ impl HistoryService {
         &self,
         game_id: i64,
         self_puuid: &str,
-    ) -> Result<MatchDetail, String> {
+    ) -> Result<MatchDetail, crate::error::AppError> {
         if game_id <= 0 {
             return Err("无效对局 ID".into());
         }
@@ -478,14 +372,19 @@ impl HistoryService {
         let path = PATH_MATCH_GAME_DETAIL.replace("%d", &game_id.to_string());
         let (status, body) = self.http.get(&path).await?;
         if !(200..300).contains(&status) {
-            return Err(format!("获取对局明细失败: HTTP {status}"));
+            return Err(crate::error::AppError::Http(format!(
+                "获取对局明细失败: HTTP {status}"
+            )));
         }
         parse_match_detail(&body, self_puuid.trim())
     }
 
     /* ── 段位 ── */
 
-    pub async fn get_players_ranked(&self, ids: &[String]) -> Result<Vec<RankedInfo>, String> {
+    pub async fn get_players_ranked(
+        &self,
+        ids: &[String],
+    ) -> Result<Vec<RankedInfo>, crate::error::AppError> {
         self.ensure_connected().await?;
         let mut seen = std::collections::HashSet::new();
         let mut uniq = Vec::new();
@@ -579,7 +478,7 @@ impl HistoryService {
             if let Some(input_ids) = buckets.get(&canonical) {
                 for input_id in input_ids {
                     out.push(RankedInfo {
-                        summoner_id: input_id.clone(),
+                        query_id: input_id.clone(),
                         puuid: puuid.clone(),
                         solo: solo.clone(),
                         flex: flex.clone(),
@@ -671,6 +570,15 @@ impl HistoryService {
                 return cache.toks.clone();
             }
         }
+        // single-flight：同 key 并发只回源一次
+        let gate = self.inflight.key("sgp_tokens");
+        let _hold = gate.lock().await;
+        {
+            let cache = self.tok.lock().unwrap();
+            if cache.valid() {
+                return cache.toks.clone();
+            }
+        }
 
         let mut t = SgpTokens::default();
         if let Some(body) = self.get_ok(PATH_LEAGUE_SESSION_TOKEN).await {
@@ -710,9 +618,15 @@ impl HistoryService {
 
     /* ── 资源代理 ── */
 
-    pub async fn get_asset(&self, kind: &str, id: i32) -> Result<AssetResult, String> {
+    pub async fn get_asset(
+        &self,
+        kind: &str,
+        id: i32,
+    ) -> Result<AssetResult, crate::error::AppError> {
         if id <= 0 {
-            return Err(format!("资源不可用: 无效资源 id {id}"));
+            return Err(crate::error::AppError::NotFound(format!(
+                "资源不可用: 无效资源 id {id}"
+            )));
         }
         self.ensure_connected().await?;
         let key = format!("{kind}:{id}");
@@ -727,7 +641,9 @@ impl HistoryService {
 
         let mut path = self.resolve_path(kind, id).await;
         if path.is_empty() {
-            return Err(format!("资源不可用: {kind} {id} 无图标映射"));
+            return Err(crate::error::AppError::NotFound(format!(
+                "资源不可用: {kind} {id} 无图标映射"
+            )));
         }
 
         let mut body = self.fetch_asset_bytes(&path).await;
@@ -842,6 +758,32 @@ fn display_name_of(game_name: &str, tag_line: &str, fallback: &str) -> String {
     }
 }
 
+/// 玩家查询键：显式区分 summonerId 与 puuid。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlayerKey {
+    SummonerId(String),
+    Puuid(String),
+}
+
+impl PlayerKey {
+    /// 按形态归类（仅用于混合 id 列表的兼容入口）：≥32 字符且含 `-` 视为 puuid。
+    /// 已知来源处应直接构造变体，勿依赖猜测。
+    pub fn classify(id: &str) -> Self {
+        if is_puuid(id) {
+            PlayerKey::Puuid(id.to_string())
+        } else {
+            PlayerKey::SummonerId(id.to_string())
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            PlayerKey::SummonerId(s) | PlayerKey::Puuid(s) => s,
+        }
+    }
+}
+
+/// id 是否呈 puuid 形态（长度 ≥32 且含 `-`）。判定口径唯一出口见 [`PlayerKey::classify`]。
 pub fn is_puuid(id: &str) -> bool {
     id.len() >= 32 && id.contains('-')
 }
@@ -915,15 +857,6 @@ pub fn mime_by_ext(path: &str) -> String {
     }
 }
 
-fn flex_str(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
-        Value::Null => String::new(),
-        other => other.to_string().trim_matches('"').to_string(),
-    }
-}
-
 #[derive(Deserialize)]
 struct SummonerRaw {
     #[serde(default)]
@@ -938,16 +871,12 @@ struct SummonerRaw {
     profile_icon_id: i32,
     #[serde(default, rename = "summonerLevel")]
     summoner_level: i64,
-    #[serde(default, rename = "summonerId", deserialize_with = "de_flex_str")]
+    #[serde(
+        default,
+        rename = "summonerId",
+        deserialize_with = "crate::util::de_flex_str"
+    )]
     summoner_id: String,
-}
-
-fn de_flex_str<'de, D>(d: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let v = Value::deserialize(d)?;
-    Ok(flex_str(&v))
 }
 
 #[cfg(test)]
@@ -1053,9 +982,9 @@ mod tests {
         let http: Arc<dyn LcuHttp> = Arc::new(FakeHttp::new(ConnStatus::default()));
         let svc = HistoryService::new(http, 20);
         let err = svc.get_matches("", 0).await.unwrap_err();
-        assert!(err.contains("puuid"), "err={err}");
+        assert!(err.to_string().contains("puuid"), "err={err}");
         let err = svc.get_matches("X", 0).await.unwrap_err();
-        assert!(err.contains("未连接"), "err={err}");
+        assert!(err.to_string().contains("未连接"), "err={err}");
     }
 
     #[tokio::test]
@@ -1088,17 +1017,79 @@ mod tests {
             "path={got}"
         );
         assert!(got.contains("begIndex=20&endIndex=39"), "query={got}");
-        assert_eq!(page.game_count, 45);
-        assert_eq!(page.total_pages, 3);
+        assert_eq!(page.total, Some(45), "LCU 路径 total 为权威总场数");
+        assert_eq!(page.total_pages, Some(3));
         assert!(page.has_more);
         assert_eq!(page.page, 1);
-        assert_eq!(page.page_size, 20);
         assert_eq!(page.summaries.len(), 1);
         assert_eq!(page.summaries[0].queue_short, "海斗");
         assert_eq!(page.summaries[0].kda, "Perfect");
 
         let end = svc.get_matches("PUUID-1", 3).await.unwrap();
         assert!(!end.has_more, "beyond end");
+        assert_eq!(end.total, Some(45));
+    }
+
+    /// C3 回归：LCU 返回缺 gameCount 时 total 必须为 None（未知），不得伪造。
+    #[tokio::test]
+    async fn match_page_lcu_missing_game_count_total_is_unknown() {
+        let fixture = r#"{"games":{"games":[
+            {"gameId":1,"gameCreation":1705329000000,"gameDuration":924,"queueId":2400,
+             "participants":[{"participantId":1,"championId":53,
+             "stats":{"win":true,"kills":4,"deaths":0,"assists":9}}]}]}}"#;
+        let http = FakeHttp::connected().with_handler({
+            let fixture = fixture.to_string();
+            move |path: &str| {
+                if path.contains("/lol-match-history/") {
+                    Ok((200, fixture.as_bytes().to_vec()))
+                } else {
+                    Ok((404, vec![]))
+                }
+            }
+        });
+        let svc = HistoryService::new(Arc::new(http), 20);
+        svc.set_sgp_enabled(false);
+
+        let page = svc.get_matches("PUUID-1", 0).await.unwrap();
+        assert_eq!(page.total, None, "无权威总数时必须表达未知");
+        assert_eq!(page.total_pages, None);
+        assert!(!page.has_more, "单条不满一页");
+    }
+
+    /// C3 回归：SGP 路径无权威总数，total/total_pages 必须为 None，
+    /// 不得再用「已扫描下标 beg+len」冒充总场数（旧 game_count 语义分裂）。
+    #[tokio::test]
+    async fn match_page_sgp_total_is_unknown() {
+        let sgp_fixture = r#"{"games":[{"metadata":{"participants":["5e65c58d-5b4a-5936-9104-806bb8443eef"]},
+            "json":{"gameId":900001,"gameCreation":1758000000000,"gameDuration":1200,"queueId":420,"mapId":11,
+            "participants":[{"puuid":"5e65c58d-5b4a-5936-9104-806bb8443eef","teamId":100,"championId":22,"champLevel":16,
+            "spell1Id":7,"spell2Id":6,"kills":6,"deaths":1,"assists":8,"win":true,
+            "item0":10,"item1":0,"item2":0,"item3":0,"item4":0,"item5":0,"item6":3340,
+            "totalMinionsKilled":205,"neutralMinionsKilled":15,"goldEarned":14200,
+            "totalDamageDealtToChampions":18500,"totalHeal":420,
+            "perks":{"statPerks":{},"styles":[{"style":8100,"selections":[{"perk":8112}]}]}}]}}]}"#;
+        let http = FakeHttp::connected().with_handler(|path: &str| match path {
+            "/lol-league-session/v1/league-session-token" => Ok((200, br#""t""#.to_vec())),
+            "/entitlements/v1/token" => Ok((200, br#"{"accessToken":"e"}"#.to_vec())),
+            _ => Ok((404, vec![])),
+        });
+        let mut svc = HistoryService::new(Arc::new(http), 20);
+        svc.set_sgp_enabled(true);
+        let fixture = sgp_fixture.to_string();
+        svc.set_sgp_match_fetch(Arc::new(move |_, _, _, start, count| {
+            let fixture = fixture.clone();
+            Box::pin(async move {
+                assert_eq!(start, 20, "第 1 页 beg=20");
+                assert_eq!(count, 20);
+                Ok(fixture.into_bytes())
+            })
+        }));
+
+        let page = svc.get_matches(TEST_PUUID, 1).await.unwrap();
+        assert_eq!(page.summaries.len(), 1);
+        assert_eq!(page.total, None, "SGP 无权威总数，必须为 None");
+        assert_eq!(page.total_pages, None, "不得给启发式伪页数");
+        assert!(!page.has_more, "1 条不满一页");
     }
 
     #[tokio::test]
@@ -1115,7 +1106,7 @@ mod tests {
         let svc = HistoryService::new(Arc::new(http), 20);
         svc.set_sgp_enabled(false);
         let err = svc.get_matches("X", 0).await.unwrap_err();
-        assert!(err.contains("HTTP 403"), "err={err}");
+        assert!(err.to_string().contains("HTTP 403"), "err={err}");
     }
 
     #[tokio::test]
@@ -1139,12 +1130,12 @@ mod tests {
         assert_eq!(res.summoner_level, 156);
 
         let err = svc.search_summoner("  ").await.unwrap_err();
-        assert!(err.contains("请输入"));
+        assert!(err.to_string().contains("请输入"));
 
         let http2 = FakeHttp::connected().with_handler(|_| Ok((404, vec![])));
         let svc2 = HistoryService::new(Arc::new(http2), 20);
         let err = svc2.search_summoner("不存在的人#CN1").await.unwrap_err();
-        assert!(err.contains("未找到"), "err={err}");
+        assert!(err.to_string().contains("未找到"), "err={err}");
     }
 
     #[tokio::test]
@@ -1171,7 +1162,7 @@ mod tests {
         });
         let svc2 = HistoryService::new(Arc::new(http2), 20);
         let err = svc2.get_self_summoner().await.unwrap_err();
-        assert!(err.contains("未登录"), "err={err}");
+        assert!(err.to_string().contains("未登录"), "err={err}");
     }
 
     #[tokio::test]
@@ -1209,7 +1200,7 @@ mod tests {
         assert!(!d.teams[0].win);
 
         let err = svc.get_match_detail(0, "PSELF").await.unwrap_err();
-        assert!(err.contains("无效"));
+        assert!(err.to_string().contains("无效"));
     }
 
     #[tokio::test]
@@ -1248,7 +1239,7 @@ mod tests {
         let infos = svc.get_players_ranked(&ids).await.unwrap();
         let mut by: HashMap<&str, &RankedInfo> = HashMap::new();
         for r in &infos {
-            by.insert(r.summoner_id.as_str(), r);
+            by.insert(r.query_id.as_str(), r);
         }
         assert_eq!(infos.len(), 4, "infos={infos:?}");
         assert_eq!(by["S1"].solo, "黄金 IV 45");
@@ -1397,7 +1388,7 @@ mod tests {
         assert_eq!(calls.lock().unwrap()[0], want);
         let mut by: HashMap<&str, &RankedInfo> = HashMap::new();
         for r in &infos {
-            by.insert(r.summoner_id.as_str(), r);
+            by.insert(r.query_id.as_str(), r);
         }
         assert_eq!(infos.len(), 2);
         for key in ["2001", TEST_PUUID] {
@@ -1546,7 +1537,7 @@ mod tests {
             })
         }));
         let err = svc.get_matches(TEST_PUUID, 0).await.unwrap_err();
-        assert!(err.contains("未找到战绩数据"), "err={err}");
+        assert!(err.to_string().contains("未找到战绩数据"), "err={err}");
         assert_eq!(sgp_hits.load(Ordering::SeqCst), 1);
         assert_eq!(lcu_hits.load(Ordering::SeqCst), 1);
     }
@@ -1641,5 +1632,23 @@ mod tests {
             hits.load(Ordering::SeqCst) > first,
             "errTTL expired should retry"
         );
+    }
+
+    #[test]
+    fn player_key_classify_dispatch() {
+        // 形态猜测只在兼容入口发生；变体匹配可分支
+        assert_eq!(
+            PlayerKey::classify("5e65c58d-5b4a-5936-9104-806bb8443eef"),
+            PlayerKey::Puuid("5e65c58d-5b4a-5936-9104-806bb8443eef".into())
+        );
+        assert_eq!(
+            PlayerKey::classify("SID-9"),
+            PlayerKey::SummonerId("SID-9".into())
+        );
+        assert!(
+            matches!(PlayerKey::classify("PUUID-1"), PlayerKey::SummonerId(_)),
+            "短横线假阳性仍归 SummonerId（与 is_puuid 口径一致）"
+        );
+        assert_eq!(PlayerKey::Puuid("x".into()).as_str(), "x");
     }
 }

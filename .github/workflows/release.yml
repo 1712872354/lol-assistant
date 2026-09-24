@@ -88,6 +88,10 @@ jobs:
           $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           $conf.version = $ver
           [IO.File]::WriteAllText("src-tauri/tauri.conf.json", ($conf | ConvertTo-Json -Depth 100), $utf8NoBom)
+          # frontend/package.json version（与 Cargo/tauri.conf 保持一致，防漂移）
+          $fpkg = Get-Content frontend/package.json -Raw | ConvertFrom-Json
+          $fpkg.version = $ver
+          [IO.File]::WriteAllText("frontend/package.json", ($fpkg | ConvertTo-Json -Depth 100), $utf8NoBom)
           Write-Host "Injected version $ver"
 
       - name: Check signing key present

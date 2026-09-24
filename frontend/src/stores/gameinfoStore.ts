@@ -8,7 +8,6 @@ import type {
   GameinfoViewState,
   GameflowPhase,
 } from "@/lib/types";
-import { phaseLabelCN } from "@/lib/phase";
 
 const EMPTY_SLOT: GameinfoPlayerSlot = { filled: false, isSelf: false };
 
@@ -16,7 +15,7 @@ function emptySlots(): GameinfoPlayerSlot[] {
   return Array.from({ length: 5 }, () => ({ ...EMPTY_SLOT }));
 }
 
-function defaultTeam(key: "ally" | "enemy", phase: GameflowPhase): GameinfoTeamView {
+function defaultTeam(key: "ally" | "enemy"): GameinfoTeamView {
   const ally = key === "ally";
   return {
     key,
@@ -24,10 +23,8 @@ function defaultTeam(key: "ally" | "enemy", phase: GameflowPhase): GameinfoTeamV
     sideText: ally ? "蓝方·房间" : "红方",
     badge: ally ? "我方" : "敌方",
     playerCount: 0,
-    phaseLabel: phaseLabelCN(phase),
     winRate: 0,
-    compScore: 0,
-    rating: 0,
+    teamScore: 0,
     slots: emptySlots(),
   };
 }
@@ -38,7 +35,7 @@ export function defaultView(phase: GameflowPhase = "None"): GameinfoViewState {
     phase,
     queueLabel: "",
     queueId: 0,
-    teams: [defaultTeam("ally", phase), defaultTeam("enemy", phase)],
+    teams: [defaultTeam("ally"), defaultTeam("enemy")],
   };
 }
 
@@ -54,7 +51,7 @@ function normalizeView(v: GameinfoViewState): GameinfoViewState {
         .slice(0, 5)
         .map((s) => ({ ...EMPTY_SLOT, ...s, filled: s.filled === true }));
       while (slots.length < 5) slots.push({ ...EMPTY_SLOT });
-      return { ...t, phaseLabel: t.phaseLabel || phaseLabelCN(phase), slots };
+      return { ...t, slots };
     }),
   };
 }
@@ -68,6 +65,8 @@ interface GameinfoState {
   setQueueKey: (v: QueueFilterKey) => void;
   view: GameinfoViewState;
   loading: boolean;
+  /** 最近一次刷新失败的用户可读原因；成功后清空 */
+  error: string | null;
   /** WS 阶段事件即时反馈（状态徽章/表头先动），完整数据由 scheduleRefresh 补 */
   setPhase: (p: GameflowPhase) => void;
   /** 从 Go 侧 gameinfo 聚合服务拉整视图（携带当前对局类型口径）；失败/未连接回落空视图 */
@@ -84,15 +83,9 @@ export const useGameinfoStore = create<GameinfoState>((set, get) => ({
   },
   view: defaultView(),
   loading: false,
+  error: null,
 
-  setPhase: (phase) =>
-    set((s) => ({
-      view: {
-        ...s.view,
-        phase,
-        teams: s.view.teams.map((t) => ({ ...t, phaseLabel: phaseLabelCN(phase) })),
-      },
-    })),
+  setPhase: (phase) => set((s) => ({ view: { ...s.view, phase } })),
 
   refresh: async () => {
     // 请求序号：仅最新一次 refresh 可写回，防旧响应覆盖新数据
@@ -106,19 +99,22 @@ export const useGameinfoStore = create<GameinfoState>((set, get) => ({
       if (rid !== refreshSeq) return;
       if (v && Array.isArray(v.teams) && v.teams.length > 0) {
         const view = normalizeView(v);
-        set({ view, loading: false });
+        set({ view, loading: false, error: null });
         scheduleInGameRetry(view);
       } else if (v) {
         // 调用成功返回空/默认视图
         retryCount = 0;
-        set({ view: normalizeView(v), loading: false });
+        set({ view: normalizeView(v), loading: false, error: null });
       } else {
-        // 调用失败：保留上一帧有效数据，仅结束 loading
-        set({ loading: false });
+        // 调用失败（callApp 吞错返回 null）：保留上一帧数据，给出错误态
+        set({ loading: false, error: "获取对局信息失败" });
       }
-    } catch {
+    } catch (e) {
       if (rid !== refreshSeq) return;
-      set({ loading: false });
+      // 刷新失败必须可见：保留上一帧数据 + 错误态
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[gameinfo] 刷新失败:", msg);
+      set({ loading: false, error: msg });
     }
   },
 }));

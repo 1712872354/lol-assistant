@@ -1,10 +1,12 @@
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GameInfoView } from "@/features/gameinfo/GameInfoView";
 import { HistoryView } from "@/features/history/HistoryView";
 import { SettingsView } from "@/features/settings/SettingsView";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
 
-/** KeepAlive：页面常驻 DOM，仅切换 hidden，保留滚动与 Query 缓存 */
+/** KeepAlive：页面常驻 DOM，仅切换 hidden，保留滚动与 Query 缓存。
+ *  每页独立 ErrorBoundary：单页渲染崩溃不拖垮其余常驻页。 */
 export function KeepAlive() {
   const activeView = useAppStore((s) => s.activeView);
 
@@ -16,7 +18,9 @@ export function KeepAlive() {
           activeView !== "history" && "hidden",
         )}
       >
-        <HistoryView />
+        <ErrorBoundary>
+          <HistoryView />
+        </ErrorBoundary>
       </div>
       <div
         className={cn(
@@ -24,7 +28,9 @@ export function KeepAlive() {
           activeView !== "gameinfo" && "hidden",
         )}
       >
-        <GameInfoView />
+        <ErrorBoundary>
+          <GameInfoView />
+        </ErrorBoundary>
       </div>
       <div
         className={cn(
@@ -32,7 +38,9 @@ export function KeepAlive() {
           activeView !== "settings" && "hidden",
         )}
       >
-        <SettingsView />
+        <ErrorBoundary>
+          <SettingsView />
+        </ErrorBoundary>
       </div>
     </main>
   );

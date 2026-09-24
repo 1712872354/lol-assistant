@@ -11,6 +11,8 @@ pub struct Config {
     pub schema_version: u32,
     pub theme: String,
     pub page_size: i64,
+    /// 对局页每人近况展示与统计场数
+    pub career_limit: i64,
     pub sgp_enabled: bool,
     pub close_to_tray: bool,
     pub client_path: String,
@@ -22,6 +24,7 @@ impl Default for Config {
             schema_version: 1,
             theme: "system".into(),
             page_size: 20,
+            career_limit: 20,
             sgp_enabled: true,
             close_to_tray: true,
             client_path: String::new(),
@@ -51,7 +54,7 @@ impl Store {
         self.inner.read().expect("config lock").clone()
     }
 
-    pub fn set(&self, mut cfg: Config) -> Result<(), String> {
+    pub fn set(&self, mut cfg: Config) -> Result<(), crate::error::AppError> {
         sanitize(&mut cfg);
         save(&self.path, &cfg)?;
         *self.inner.write().expect("config lock") = cfg;
@@ -80,14 +83,14 @@ fn load_or_default(path: &Path) -> Config {
     }
 }
 
-fn save(path: &Path, cfg: &Config) -> Result<(), String> {
+fn save(path: &Path, cfg: &Config) -> Result<(), crate::error::AppError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+    std::fs::rename(&tmp, path).map_err(|e| crate::error::AppError::Msg(e.to_string()))
 }
 
 fn sanitize(cfg: &mut Config) {
@@ -96,6 +99,9 @@ fn sanitize(cfg: &mut Config) {
     }
     if !(5..=50).contains(&cfg.page_size) {
         cfg.page_size = 20;
+    }
+    if !(5..=50).contains(&cfg.career_limit) {
+        cfg.career_limit = 20;
     }
     if cfg.theme != "light" && cfg.theme != "dark" && cfg.theme != "system" {
         cfg.theme = "system".into();
@@ -147,6 +153,7 @@ mod tests {
     fn default_config() {
         let c = Config::default();
         assert_eq!(c.page_size, 20);
+        assert_eq!(c.career_limit, 20);
         assert!(c.sgp_enabled);
         assert!(c.close_to_tray);
     }

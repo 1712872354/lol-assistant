@@ -23,7 +23,9 @@ pub type ProbeFn = Arc<
     dyn Fn(
             Credentials,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<ConnStatus, String>> + Send>,
+            Box<
+                dyn std::future::Future<Output = Result<ConnStatus, crate::error::AppError>> + Send,
+            >,
         > + Send
         + Sync,
 >;
@@ -36,6 +38,8 @@ pub struct Monitor {
     probe: ProbeFn,
     /// 会话代次：凭据换代时递增，旧 WS 任务据此自杀
     session: Arc<AtomicU64>,
+    /// 轮询循环句柄（stop 时终止）
+    poll_abort: Arc<std::sync::Mutex<Option<AbortHandle>>>,
 }
 
 struct MonitorInner {
@@ -67,6 +71,7 @@ impl Monitor {
             detect,
             probe,
             session: Arc::new(AtomicU64::new(0)),
+            poll_abort: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -136,6 +141,9 @@ impl Monitor {
     }
 
     /// 单轮 tick：检测 → 探测 → 提交/断开。返回下一轮间隔。
+    ///
+    /// 并发契约（C1）：`inner` 临界区只做计数/比较/克隆等 CPU 操作，
+    /// **绝不跨任何 I/O**——探测（probe）在锁外执行，避免拖死 status()/client()/stop()。
     pub async fn tick<F>(
         &self,
         on_change: Option<F>,
@@ -157,63 +165,82 @@ impl Monitor {
         } else if detect_ms > 500 {
             log::warn!("[lcu] detect slow cost={}ms", detect_ms);
         }
-        let mut inner = self.inner.lock().await;
 
-        // 未检测到进程
-        let Some(c) = creds else {
-            inner.miss += 1;
-            if inner.miss >= MISS_LIMIT && inner.status.state != State::Disconnected {
-                let st = Self::mark_disconnected(&mut inner);
-                drop(inner);
+        // ── 阶段一：短锁决策，随即释放 ──
+        enum Next {
+            /// 连续 miss 达阈值：需触发断开回调
+            Disconnect(ConnStatus),
+            /// 无需探测的间隔（未检测到进程 / 稳定态降频）
+            Interval(Duration),
+            /// 需要探测：recheck=true 为登录等待期复查（仅升级 Connected 才提交，失败不计 miss）
+            Probe { c: Credentials, recheck: bool },
+        }
+
+        let next = {
+            let mut inner = self.inner.lock().await;
+            match creds {
+                // 未检测到进程
+                None => {
+                    inner.miss += 1;
+                    if inner.miss >= MISS_LIMIT && inner.status.state != State::Disconnected {
+                        Next::Disconnect(Self::mark_disconnected(&mut inner))
+                    } else if inner.status.state == State::Connected {
+                        Next::Interval(POLL_INTERVAL_STABLE)
+                    } else {
+                        Next::Interval(POLL_INTERVAL)
+                    }
+                }
+                Some(c) => {
+                    // 已连接且凭据未变 → 稳定态降频，不重复探测
+                    let same = inner.creds.as_ref().is_some_and(|prev| prev.equal(&c));
+                    if same && inner.status.state == State::Connected {
+                        inner.miss = 0;
+                        Next::Interval(POLL_INTERVAL_STABLE)
+                    } else if same && inner.status.state == State::Unauthenticated {
+                        // 登录等待期：轻量复查（对齐 Go fetchSummonerStatus 路径）
+                        Next::Probe { c, recheck: true }
+                    } else {
+                        // 凭据变化或首次发现 → 探测（失败不提交半开状态）
+                        Next::Probe { c, recheck: false }
+                    }
+                }
+            }
+        };
+        // 锁已释放
+
+        // ── 阶段二：无锁探测 + 短锁提交 ──
+        match next {
+            Next::Disconnect(st) => {
                 if let Some(cb) = on_change {
                     cb(st);
                 }
-                return POLL_INTERVAL;
-            }
-            let interval = if inner.status.state == State::Connected {
-                POLL_INTERVAL_STABLE
-            } else {
                 POLL_INTERVAL
-            };
-            return interval;
-        };
-
-        // 已连接且凭据未变 → 稳定态降频，不重复探测
-        if let Some(prev) = &inner.creds {
-            if prev.equal(&c) {
-                match inner.status.state {
-                    State::Connected => {
-                        inner.miss = 0;
-                        return POLL_INTERVAL_STABLE;
-                    }
-                    State::Unauthenticated => {
-                        // 登录等待期：轻量复查（对齐 Go fetchSummonerStatus 路径）
-                        // 仍走 probe 钩子以便测试注入；生产为 probe_and_build
-                        match (self.probe)(c.clone()).await {
-                            Ok(st) if st.state == State::Connected => {
-                                let changed =
-                                    self.commit_connected(&mut inner, c, st, &on_event).await;
-                                let committed = inner.status.clone();
-                                drop(inner);
-                                if changed {
-                                    if let Some(cb) = on_change {
-                                        cb(committed);
-                                    }
-                                }
-                                return POLL_INTERVAL;
-                            }
-                            _ => return POLL_INTERVAL,
-                        }
-                    }
-                    State::Disconnected => {}
-                }
+            }
+            Next::Interval(iv) => iv,
+            Next::Probe { c, recheck } => {
+                self.probe_and_commit(c, recheck, &on_event, on_change)
+                    .await
             }
         }
+    }
 
-        // 凭据变化或首次发现 → 探测（失败不提交，下轮重试）
+    /// 探测（**不持 inner 锁**）→ 短锁提交/计 miss。返回下一轮间隔。
+    async fn probe_and_commit<F>(
+        &self,
+        c: Credentials,
+        recheck: bool,
+        on_event: &Option<Arc<dyn Fn(LcuEvent) + Send + Sync>>,
+        on_change: Option<F>,
+    ) -> Duration
+    where
+        F: FnOnce(ConnStatus),
+    {
         match (self.probe)(c.clone()).await {
+            // 登录等待期复查未升级：不提交
+            Ok(st) if recheck && st.state != State::Connected => POLL_INTERVAL,
             Ok(st) => {
-                let changed = self.commit_connected(&mut inner, c, st, &on_event).await;
+                let mut inner = self.inner.lock().await;
+                let changed = self.commit_connected(&mut inner, c, st, on_event).await;
                 let committed = inner.status.clone();
                 drop(inner);
                 if changed {
@@ -226,7 +253,12 @@ impl Monitor {
             }
             Err(e) => {
                 log::debug!("[lcu] probe failed: {e}");
+                // 登录等待期复查失败：不计 miss
+                if recheck {
+                    return POLL_INTERVAL;
+                }
                 // 探测失败不提交半开状态；连续 miss 才断开
+                let mut inner = self.inner.lock().await;
                 inner.miss += 1;
                 if inner.miss >= MISS_LIMIT && inner.status.state != State::Disconnected {
                     let st = Self::mark_disconnected(&mut inner);
@@ -248,7 +280,8 @@ impl Monitor {
     {
         let on_change = Arc::new(on_change);
         let on_event: Arc<dyn Fn(LcuEvent) + Send + Sync> = Arc::new(on_event);
-        tokio::spawn(async move {
+        let poll_abort = self.poll_abort.clone();
+        let handle = tokio::spawn(async move {
             loop {
                 let oc = on_change.clone();
                 let oe = on_event.clone();
@@ -258,11 +291,15 @@ impl Monitor {
                 tokio::time::sleep(interval).await;
             }
         });
+        *poll_abort.lock().unwrap() = Some(handle.abort_handle());
     }
 
-    /// 停止检测循环与 WS（幂等；进程退出路径调用）。
+    /// 终止轮询循环与 WS 订阅，并使旧会话回调失效（幂等；进程退出路径调用）。
     pub async fn stop(&self) {
         self.session.fetch_add(1, Ordering::SeqCst);
+        if let Some(h) = self.poll_abort.lock().unwrap().take() {
+            h.abort();
+        }
         let mut inner = self.inner.lock().await;
         if let Some(h) = inner.ws_abort.take() {
             h.abort();
@@ -279,7 +316,8 @@ impl Default for Monitor {
 /// 真实探测链路（对齐 Go probeAndBuild + fetchSummonerStatus）：
 /// 1. GET /system/v1/builds ≤5 次（600ms 间隔）判定 LCU 就绪；
 /// 2. 就绪后 GET current-summoner：200+puuid→connected / 404→unauthenticated。
-pub async fn probe_and_build(creds: Credentials) -> Result<ConnStatus, String> {
+pub async fn probe_and_build(creds: Credentials) -> Result<ConnStatus, crate::error::AppError> {
+    use crate::error::AppError;
     let client = Client::new(&creds);
     let mut last_err = String::new();
     for attempt in 1..=5 {
@@ -294,11 +332,17 @@ pub async fn probe_and_build(creds: Credentials) -> Result<ConnStatus, String> {
             tokio::time::sleep(Duration::from_millis(600)).await;
         }
     }
-    Err(format!("lcu http not ready after 5 probes: {last_err}"))
+    Err(AppError::Http(format!(
+        "lcu http not ready after 5 probes: {last_err}"
+    )))
 }
 
 /// 拉取 current-summoner 并映射登录态。
-async fn fetch_summoner_status(client: &Client, creds: &Credentials) -> Result<ConnStatus, String> {
+async fn fetch_summoner_status(
+    client: &Client,
+    creds: &Credentials,
+) -> Result<ConnStatus, crate::error::AppError> {
+    use crate::error::AppError;
     match client.get(PATH_CURRENT_SUMMONER).await {
         Ok(v) => {
             if let Some(st) = parse_current_summoner_value(&v) {
@@ -313,12 +357,13 @@ async fn fetch_summoner_status(client: &Client, creds: &Credentials) -> Result<C
                 })
             }
         }
-        Err(e) if e.to_string().contains("404") => Ok(ConnStatus {
+        // 404（NotFound 变体）→ 未登录；按变体匹配，不再字符串嗅探
+        Err(AppError::NotFound(_)) => Ok(ConnStatus {
             state: State::Unauthenticated,
             platform_id: Some(creds.platform_id.clone()),
             ..Default::default()
         }),
-        Err(e) => Err(format!("current-summoner: {e}")),
+        Err(e) => Err(AppError::Http(format!("current-summoner: {e}"))),
     }
 }
 
@@ -545,6 +590,62 @@ mod tests {
             states,
             vec![State::Connected, State::Disconnected, State::Connected]
         );
+    }
+
+    /// C1 回归：探测（probe）进行中不得持有 inner 锁，否则 status/client 全部挂起。
+    #[tokio::test]
+    async fn probe_does_not_hold_inner_lock() {
+        let creds = Credentials {
+            pid: 7,
+            port: 8,
+            token: "t".into(),
+            platform_id: "HN1".into(),
+        };
+        let probing = Arc::new(AtomicBool::new(false));
+        let m = test_monitor(
+            {
+                let c = creds.clone();
+                Arc::new(move |_| Some(c.clone()))
+            },
+            {
+                let probing = probing.clone();
+                Arc::new(move |_| {
+                    let probing = probing.clone();
+                    Box::pin(async move {
+                        probing.store(true, Ordering::SeqCst);
+                        // 模拟慢探测（生产最坏约 52s：5×10s + 4×600ms）
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        Ok(ConnStatus {
+                            state: State::Connected,
+                            ..Default::default()
+                        })
+                    })
+                })
+            },
+        );
+
+        let m2 = m.clone();
+        let tick = tokio::spawn(async move { m2.tick::<fn(ConnStatus)>(None, None).await });
+
+        // 等 probe 真正进入慢路径
+        while !probing.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+
+        // probe 进行中：status()/client() 必须立刻返回，不得被 inner 锁拖住
+        tokio::time::timeout(Duration::from_millis(100), m.status())
+            .await
+            .expect("status() must not block while probe is in flight");
+        tokio::time::timeout(Duration::from_millis(100), m.client())
+            .await
+            .expect("client() must not block while probe is in flight");
+        tokio::time::timeout(Duration::from_millis(100), m.credentials())
+            .await
+            .expect("credentials() must not block while probe is in flight");
+
+        let interval = tick.await.unwrap();
+        assert_eq!(interval, POLL_INTERVAL);
+        assert_eq!(m.status().await.state, State::Connected);
     }
 
     #[tokio::test]

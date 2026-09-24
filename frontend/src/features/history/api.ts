@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
 import { callAppStrict } from "@/lib/backend";
 import type {
-  AssetResult,
   MatchDetail,
   MatchPage,
   RankedInfo,
@@ -35,7 +33,7 @@ export const fetchPlayersRanked = (summonerIds: string[]) => {
   return callAppStrict<RankedInfo[]>("GetPlayersRanked", ids).then((rows) =>
     (rows ?? []).map((r) => ({
       ...r,
-      summonerId: String(r.summonerId ?? ""),
+      queryId: String(r.queryId ?? ""),
       puuid: r.puuid ? String(r.puuid) : undefined,
       solo: r.solo ?? "",
       flex: r.flex ?? "",
@@ -44,54 +42,5 @@ export const fetchPlayersRanked = (summonerIds: string[]) => {
 };
 
 /** 兼容别名（明细面板） */
-export const fetchRanked = fetchPlayersRanked;
 
 /* ── 资源图标：base64 → data URL ── */
-
-const assetCache = new Map<string, string>();
-const inflight = new Map<string, Promise<string>>();
-const ASSET_CACHE_CAP = 800;
-
-export function useAsset(kind: string, id: number): string | null {
-  const key = `${kind}:${id}`;
-  const [url, setUrl] = useState<string | null>(() => assetCache.get(key) ?? null);
-
-  useEffect(() => {
-    if (!id || id <= 0) {
-      setUrl(null);
-      return;
-    }
-    const hit = assetCache.get(key);
-    if (hit) {
-      setUrl(hit);
-      return;
-    }
-    let alive = true;
-    let p = inflight.get(key);
-    if (!p) {
-      p = callAppStrict<AssetResult>("GetMatchAsset", kind, id)
-        .then((r) => {
-          const u = `data:${r.mime};base64,${r.data}`;
-          if (assetCache.size >= ASSET_CACHE_CAP) assetCache.clear();
-          assetCache.set(key, u);
-          inflight.delete(key);
-          return u;
-        })
-        .catch((e) => {
-          inflight.delete(key);
-          throw e;
-        });
-      inflight.set(key, p);
-    }
-    p.then((u) => {
-      if (alive) setUrl(u);
-    }).catch(() => {
-      if (alive) setUrl(null);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [key, kind, id]);
-
-  return url;
-}

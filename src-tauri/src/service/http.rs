@@ -5,14 +5,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use crate::error::AppError;
 use crate::lcu::{Client, ConnStatus, Monitor, State};
 
 pub type BoxFut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// LCU GET + 状态快照（服务层唯一 LCU 入口）。
 pub trait LcuHttp: Send + Sync + 'static {
-    /// GET，返回 (status, body)；网络错误 → Err(String)。非 2xx 仍为 Ok。
-    fn get<'a>(&'a self, path: &'a str) -> BoxFut<'a, Result<(u16, Vec<u8>), String>>;
+    /// GET，返回 (status, body)；网络错误 → Err(AppError)。非 2xx 仍为 Ok。
+    fn get<'a>(&'a self, path: &'a str) -> BoxFut<'a, Result<(u16, Vec<u8>), AppError>>;
     /// 连接状态快照。
     fn status(&self) -> BoxFut<'_, ConnStatus>;
 }
@@ -28,19 +29,16 @@ impl MonitorHttp {
         Self { mon }
     }
 
-    async fn client(&self) -> Result<Client, String> {
-        self.mon
-            .client()
-            .await
-            .ok_or_else(|| crate::service::ERR_NOT_CONNECTED.to_string())
+    async fn client(&self) -> Result<Client, AppError> {
+        self.mon.client().await.ok_or(AppError::NotConnected)
     }
 }
 
 impl LcuHttp for MonitorHttp {
-    fn get<'a>(&'a self, path: &'a str) -> BoxFut<'a, Result<(u16, Vec<u8>), String>> {
+    fn get<'a>(&'a self, path: &'a str) -> BoxFut<'a, Result<(u16, Vec<u8>), AppError>> {
         Box::pin(async move {
             let cli = self.client().await?;
-            cli.get_raw(path).await.map_err(|e| e.to_string())
+            cli.get_raw(path).await
         })
     }
 
@@ -50,7 +48,7 @@ impl LcuHttp for MonitorHttp {
 }
 
 /// 可选动态路由 handler 类型（测试注入计数等）
-pub type FakeHandler = Arc<dyn Fn(&str) -> Result<(u16, Vec<u8>), String> + Send + Sync>;
+pub type FakeHandler = Arc<dyn Fn(&str) -> Result<(u16, Vec<u8>), AppError> + Send + Sync>;
 
 /// 测试实现：路径 → (status, body)；未命中返回 404。
 #[derive(Default, Clone)]
@@ -78,7 +76,7 @@ impl FakeHttp {
 
     pub fn with_handler(
         mut self,
-        h: impl Fn(&str) -> Result<(u16, Vec<u8>), String> + Send + Sync + 'static,
+        h: impl Fn(&str) -> Result<(u16, Vec<u8>), AppError> + Send + Sync + 'static,
     ) -> Self {
         self.handler = Some(Arc::new(h));
         self
@@ -98,7 +96,7 @@ impl FakeHttp {
 }
 
 impl LcuHttp for FakeHttp {
-    fn get<'a>(&'a self, path: &'a str) -> BoxFut<'a, Result<(u16, Vec<u8>), String>> {
+    fn get<'a>(&'a self, path: &'a str) -> BoxFut<'a, Result<(u16, Vec<u8>), AppError>> {
         Box::pin(async move {
             if let Some(h) = &self.handler {
                 return h(path);
@@ -121,29 +119,7 @@ impl LcuHttp for FakeHttp {
     }
 }
 
-/* ── URL 编码（对齐 Go net/url PathEscape / QueryEscape 常用子集） ── */
-
-pub fn path_escape(s: &str) -> String {
-    percent_encode(s, false)
-}
-
-pub fn query_escape(s: &str) -> String {
-    percent_encode(s, true)
-}
-
-fn percent_encode(s: &str, space_as_plus: bool) -> String {
-    let mut out = String::with_capacity(s.len());
-    for &b in s.as_bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            b' ' if space_as_plus => out.push('+'),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
-}
+pub use crate::util::{path_escape, query_escape};
 
 #[cfg(test)]
 mod tests {

@@ -18,6 +18,7 @@ export interface AppConfig {
   schemaVersion: number;
   theme: ThemeMode;
   pageSize: number;
+  careerLimit: number;
   sgpEnabled: boolean;
   closeToTray: boolean;
   clientPath: string;
@@ -27,6 +28,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   schemaVersion: 1,
   theme: "system",
   pageSize: 20,
+  careerLimit: 20,
   sgpEnabled: true,
   closeToTray: true,
   clientPath: "",
@@ -76,7 +78,7 @@ export interface GameinfoPlayerSlot {
   winRate?: number;
   winRateSample?: number;
   avgKda?: number;
-  rating?: number;
+  playerScore?: number;
   hiddenCareer?: boolean;
   recent?: GameinfoRecentMatch[];
 }
@@ -87,10 +89,8 @@ export interface GameinfoTeamView {
   sideText: string;
   badge: string;
   playerCount: number;
-  phaseLabel: string;
   winRate: number;
-  compScore: number;
-  rating: number;
+  teamScore: number;
   slots: GameinfoPlayerSlot[]; // 恒 5
 }
 
@@ -118,11 +118,9 @@ export interface MatchSummary {
   queueId: number;
   queueName: string;
   queueShort: string;
-  mapName: string;
   arena: boolean;
   gameCreation: number; // ms
   gameDuration: number; // s
-  time: string; // "2026-09-21 20:24"
   shortTime: string; // "09-21"
   duration: string; // "15:24"
   championId: number;
@@ -138,20 +136,18 @@ export interface MatchSummary {
   remake: boolean;
   placement: number; // 竞技场名次，0=无
   items: number[]; // item0..6（7 格，含饰品）
-  cs: number;
   gold: number;
   totalDamage: number;
-  totalHeal: number;
   augmentIds: number[];
-  teamId: number;
 }
 
 export interface MatchPage {
   puuid: string;
   page: number;
-  pageSize: number;
-  gameCount: number;
-  totalPages: number;
+  /** 真实总场数（权威）；来源无权威总数时缺省（SGP / LCU 缺 gameCount） */
+  total?: number;
+  /** 总页数（由 total 推导）；total 未知时缺省 */
+  totalPages?: number;
   hasMore: boolean;
   summaries: MatchSummary[];
 }
@@ -174,18 +170,16 @@ export interface PlayerRow {
   assists: number;
   kda: string;
   items: number[];
-  cs: number;
   gold: number;
   totalDamage: number;
-  totalHeal: number;
   win: boolean;
   remake: boolean;
   augmentIds: number[];
   tierShort: string; // "黄金" | ""（历史最高段位，仅作回退展示）
   dmgRatio: number; // 伤转 = 个人伤害 / 本组平均伤害
-  rating: number; // 本工具评分
+  matchRating: number; // 本工具评分
   ratingRank: number; // 全场评分名次 1..N
-  killPct: number; // 参团率 % = (K+A) / 本组总击杀 × 100
+  killParticipation: number; // 参团率 % = (K+A) / 本组总击杀 × 100
   isSelf: boolean;
 }
 
@@ -205,7 +199,6 @@ export interface MatchDetail {
   gameId: number;
   queueId: number;
   queueName: string;
-  mapName: string;
   arena: boolean;
   gameCreation: number;
   time: string;
@@ -214,12 +207,11 @@ export interface MatchDetail {
   durationMin: string; // "15分"
   remake: boolean;
   selfPuuid: string;
-  selfTeamIndex: number; // 恒 0：teams[0] = 本人所在队伍
   teams: TeamSummary[];
 }
 
 export interface RankedInfo {
-  summonerId: string; // 查询 id（summonerId 或 puuid）
+  queryId: string; // 查询 id（summonerId 或 puuid）
   puuid?: string;
   solo: string; // "黄金 IV 45" | "未定级"
   flex: string;

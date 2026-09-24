@@ -15,7 +15,7 @@ use crate::portable_updater;
 pub const REPO_OWNER: &str = "1712872354";
 pub const REPO_NAME: &str = "lol-assistant";
 
-/// 更新检查结果（JSON 给前端，字段与原 Wails Info 对齐）
+/// 更新检查结果（JSON 给前端）
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Info {
@@ -24,11 +24,6 @@ pub struct Info {
     pub version: String,
     pub notes: String,
     pub pub_date: String,
-    /// 安装版走 updater 插件，不再暴露直链；保留字段兼容前端类型
-    pub setup_url: String,
-    pub portable_url: String,
-    /// minisign 签名由插件校验，前端不再传 SHA256
-    pub sha256: String,
     pub release_url: String,
 }
 
@@ -132,34 +127,71 @@ fn drop_section(s: &str, title: &str) -> String {
 }
 
 /// 构建 updater（便携版切到 windows-*-portable target）。
-async fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
+async fn build_updater(
+    app: &AppHandle,
+) -> Result<tauri_plugin_updater::Updater, crate::error::AppError> {
     let builder = app.updater_builder();
     let builder = if portable_updater::is_portable() {
         match std::env::consts::ARCH {
             "x86_64" => builder.target("windows-x86_64-portable"),
             "aarch64" => builder.target("windows-aarch64-portable"),
-            other => return Err(format!("不支持的便携版更新架构: {other}")),
+            other => {
+                return Err(crate::error::AppError::Updater(format!(
+                    "不支持的便携版更新架构: {other}"
+                )))
+            }
         }
     } else {
         builder
     };
     builder
         .build()
-        .map_err(|e| format!("无法初始化更新器: {e}"))
+        .map_err(|e| crate::error::AppError::Updater(format!("无法初始化更新器: {e}")))
+}
+
+/// 语义化版本三段数字比较（容忍 `v` 前缀；非数字段按 0）。
+/// remote 严格大于 current 才视为可更新——相等/降级一律拒绝（反回滚）。
+pub(crate) fn version_newer(remote: &str, current: &str) -> bool {
+    parse_ver(remote) > parse_ver(current)
+}
+
+fn parse_ver(v: &str) -> (u64, u64, u64) {
+    let v = v.trim().trim_start_matches('v');
+    let mut it = v.split('.');
+    let major = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let minor = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let patch = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    (major, minor, patch)
 }
 
 /// check：TargetNotFound 视为无更新（latest.json 尚无 portable 平台）。
+/// 反回滚：远程版本未严格高于当前版本时按“无更新”处理（防 latest.json 元数据投毒降级诱导）。
 pub(crate) async fn check_update_opt(
     app: &AppHandle,
-) -> Result<Option<tauri_plugin_updater::Update>, String> {
+) -> Result<Option<tauri_plugin_updater::Update>, crate::error::AppError> {
     let updater = build_updater(app).await?;
     match updater.check().await {
-        Ok(update) => Ok(update),
+        Ok(update) => {
+            if let Some(u) = &update {
+                let current = app.package_info().version.to_string();
+                if !version_newer(&u.version, &current) {
+                    log::warn!(
+                        "[update] 拒绝非升级版本 remote={} current={}（反回滚）",
+                        u.version,
+                        current
+                    );
+                    return Ok(None);
+                }
+            }
+            Ok(update)
+        }
         Err(
             tauri_plugin_updater::Error::TargetNotFound(_)
             | tauri_plugin_updater::Error::TargetsNotFound(_),
         ) => Ok(None),
-        Err(e) => Err(format!("检查更新失败: {e}")),
+        Err(e) => Err(crate::error::AppError::Updater(format!(
+            "检查更新失败: {e}"
+        ))),
     }
 }
 
@@ -183,21 +215,18 @@ pub fn info_from_update(update: &tauri_plugin_updater::Update, current: &str) ->
         version,
         notes,
         pub_date,
-        setup_url: String::new(),
-        portable_url: String::new(),
-        sha256: String::new(),
         release_url: release_url_for(&update.version),
     }
 }
 
 /// CAS 防重入：占用成功返回 true，调用方负责最终释放（成功路径可不释放，因随后退出）。
-pub fn try_begin_download(app: &AppHandle) -> Result<(), String> {
+pub fn try_begin_download(app: &AppHandle) -> Result<(), crate::error::AppError> {
     let state = app.state::<crate::AppState>();
     state
         .is_downloading
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .map(|_| ())
-        .map_err(|_| "更新正在下载中，请稍候".to_string())
+        .map_err(|_| crate::error::AppError::Invalid("更新正在下载中，请稍候".into()))
 }
 
 pub fn end_download(app: &AppHandle) {
@@ -206,7 +235,7 @@ pub fn end_download(app: &AppHandle) {
 }
 
 /// 检查更新（不下载）。便携版走 portable target。
-pub async fn check(app: &AppHandle) -> Result<Info, String> {
+pub async fn check(app: &AppHandle) -> Result<Info, crate::error::AppError> {
     let current = app.package_info().version.to_string();
     match check_update_opt(app).await? {
         Some(update) => Ok(info_from_update(&update, &current)),
@@ -234,7 +263,7 @@ pub async fn startup_check_update(app: AppHandle) {
 pub async fn download_and_install_installed(
     app: &AppHandle,
     on_progress: impl Fn(Progress) + Send + Sync + 'static,
-) -> Result<(), String> {
+) -> Result<(), crate::error::AppError> {
     let update = check_update_opt(app)
         .await?
         .ok_or_else(|| "没有可用的更新".to_string())?;
@@ -264,7 +293,7 @@ pub async fn download_and_install_installed(
             },
         )
         .await
-        .map_err(|e| format!("下载/安装更新失败: {e}"))?;
+        .map_err(|e| crate::error::AppError::Updater(format!("下载/安装更新失败: {e}")))?;
 
     progress(Progress::new("done", 100, "更新安装完成，正在重启"));
     Ok(())
@@ -272,7 +301,7 @@ pub async fn download_and_install_installed(
 
 /// 统一入口：按安装版/便携版分发；进度经 update:progress。
 /// 成功返回 Ok(()) 后由调用方触发退出（安装版可等安装器拉起；便携版 helper 已 spawn）。
-pub async fn download_and_install(app: AppHandle) -> Result<(), String> {
+pub async fn download_and_install(app: AppHandle) -> Result<(), crate::error::AppError> {
     try_begin_download(&app)?;
     let result = if portable_updater::is_portable() {
         portable_updater::download_and_apply(&app).await
@@ -291,7 +320,7 @@ pub async fn download_and_install(app: AppHandle) -> Result<(), String> {
 }
 
 /// 下载安装并强制退出（绕过 closeToTray），供 commands 调用。
-pub async fn download_install_and_quit(app: AppHandle) -> Result<(), String> {
+pub async fn download_install_and_quit(app: AppHandle) -> Result<(), crate::error::AppError> {
     download_and_install(app.clone()).await?;
 
     let state = app.state::<crate::AppState>();
@@ -345,5 +374,57 @@ mod tests {
             release_url_for("1.0.7"),
             "https://github.com/1712872354/lol-assistant/releases/tag/v1.0.7"
         );
+    }
+
+    /// T2.1 回归：Info 不得再携带恒空死字段（setupUrl/portableUrl/sha256）。
+    #[test]
+    fn update_info_serialized_without_dead_fields() {
+        let info = Info {
+            has_update: true,
+            current_version: "1.0.7".into(),
+            version: "1.0.8".into(),
+            notes: "n".into(),
+            pub_date: "d".into(),
+            release_url: "r".into(),
+        };
+        let json = serde_json::to_value(&info).unwrap();
+        assert!(json.get("sha256").is_none(), "sha256 死字段必须移除");
+        assert!(json.get("setupUrl").is_none(), "setupUrl 死字段必须移除");
+        assert!(
+            json.get("portableUrl").is_none(),
+            "portableUrl 死字段必须移除"
+        );
+        assert_eq!(json.get("version").unwrap(), "1.0.8");
+        assert_eq!(json.get("releaseUrl").unwrap(), "r");
+    }
+
+    /// T2.1 回归：更新元数据端点不得走第三方镜像（ghp.ci 等），只信任 GitHub 官方源。
+    #[test]
+    fn update_endpoints_exclude_third_party_mirrors() {
+        let conf = include_str!("../tauri.conf.json");
+        assert!(
+            !conf.contains("ghp.ci"),
+            "updater endpoints 不得包含第三方镜像 ghp.ci"
+        );
+        assert!(
+            conf.contains(
+                "https://github.com/1712872354/lol-assistant/releases/latest/download/latest.json"
+            ),
+            "必须保留 GitHub 官方 latest.json 端点"
+        );
+    }
+
+    /// T2.1 回归：反回滚——仅严格更高的版本视为可更新，相等/降级一律拒绝（防 latest.json 投毒降级诱导）。
+    #[test]
+    fn version_newer_rejects_downgrade_and_equal() {
+        assert!(version_newer("1.0.8", "1.0.7"));
+        assert!(version_newer("v1.0.8", "1.0.7"), "v 前缀需容忍");
+        assert!(version_newer("1.1.0", "1.0.9"));
+        assert!(version_newer("2.0.0", "1.9.9"));
+        assert!(version_newer("1.0.10", "1.0.9"), "按数比较非字典序");
+        assert!(!version_newer("1.0.7", "1.0.7"), "相等不算更新");
+        assert!(!version_newer("1.0.6", "1.0.7"), "降级必须拒绝");
+        assert!(!version_newer("0.9.9", "1.0.0"));
+        assert!(!version_newer("", "1.0.0"), "空版本拒绝");
     }
 }

@@ -12,8 +12,8 @@ import type {
 } from "@/lib/types";
 import type { UpdateInfo } from "@/stores/updateStore";
 
-/** Wails PascalCase 方法名 → Tauri 命令 + 具名参数打包（键用 camelCase，对齐 Tauri 2 默认） */
-type WailsFn =
+/** 前端调用面 方法名 → Tauri 命令 + 具名参数打包（键用 camelCase，对齐 Tauri 2 默认） */
+type InvokeFn =
   | "GetConnStatus"
   | "GetConfig"
   | "SetConfig"
@@ -37,7 +37,7 @@ interface CmdSpec {
   pack?: (args: unknown[]) => Record<string, unknown>;
 }
 
-const CMD_MAP: Record<WailsFn, CmdSpec> = {
+const CMD_MAP: Record<InvokeFn, CmdSpec> = {
   GetConnStatus: { cmd: "get_conn_status" },
   GetConfig: { cmd: "get_config" },
   SetConfig: { cmd: "set_config", pack: (a) => ({ cfg: a[0] }) },
@@ -55,7 +55,7 @@ const CMD_MAP: Record<WailsFn, CmdSpec> = {
   GetSelfSummoner: { cmd: "get_self_summoner" },
   GetPlayersRanked: {
     cmd: "get_players_ranked",
-    pack: (a) => ({ summonerIds: a[0] }),
+    pack: (a) => ({ queryIds: a[0] }),
   },
   GetMatchAsset: { cmd: "get_match_asset", pack: (a) => ({ kind: a[0], id: a[1] }) },
   GetGameflowState: {
@@ -74,7 +74,7 @@ export function isTauri(): boolean {
 
 /** 统一绑定调用：Tauri 环境外返回 null，不抛错 */
 export async function callApp<T>(
-  fn: WailsFn,
+  fn: InvokeFn,
   ...args: unknown[]
 ): Promise<T | null> {
   if (!isTauri()) return null;
@@ -92,7 +92,7 @@ export async function callApp<T>(
 
 /** 严格绑定调用：抛出错误供 React Query 捕获 */
 export async function callAppStrict<T>(
-  fn: WailsFn,
+  fn: InvokeFn,
   ...args: unknown[]
 ): Promise<T> {
   if (!isTauri()) throw new Error("后端未就绪（非 Tauri 运行环境）");

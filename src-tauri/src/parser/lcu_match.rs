@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::queue::queue_info_for;
+use crate::util::{flex_value, opt_id};
 
 /* ─── 输出视图模型 ─────────────────────────────────────────────── */
 
@@ -17,11 +18,9 @@ pub struct MatchSummary {
     pub queue_id: i32,
     pub queue_name: String,
     pub queue_short: String,
-    pub map_name: String,
     pub arena: bool,
     pub game_creation: i64,
     pub game_duration: i32,
-    pub time: String,
     pub short_time: String,
     pub duration: String,
     pub champion_id: i32,
@@ -37,12 +36,9 @@ pub struct MatchSummary {
     pub remake: bool,
     pub placement: i32,
     pub items: Vec<i32>,
-    pub cs: i32,
     pub gold: i32,
     pub total_damage: i32,
-    pub total_heal: i32,
     pub augment_ids: Vec<i32>,
-    pub team_id: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -51,8 +47,8 @@ pub struct PlayerRow {
     pub participant_id: i32,
     pub team_id: i32,
     pub placement: i32,
-    pub puuid: String,
-    pub summoner_id: String,
+    pub puuid: Option<String>,
+    pub summoner_id: Option<String>,
     pub name: String,
     pub profile_icon_id: i32,
     pub champion_id: i32,
@@ -65,18 +61,16 @@ pub struct PlayerRow {
     pub assists: i32,
     pub kda: String,
     pub items: Vec<i32>,
-    pub cs: i32,
     pub gold: i32,
     pub total_damage: i32,
-    pub total_heal: i32,
     pub win: bool,
     pub remake: bool,
     pub augment_ids: Vec<i32>,
     pub tier_short: String,
     pub dmg_ratio: f64,
-    pub rating: f64,
+    pub match_rating: f64,
     pub rating_rank: i32,
-    pub kill_pct: i32,
+    pub kill_participation: i32,
     pub is_self: bool,
 }
 
@@ -100,7 +94,6 @@ pub struct MatchDetail {
     pub game_id: i64,
     pub queue_id: i32,
     pub queue_name: String,
-    pub map_name: String,
     pub arena: bool,
     pub game_creation: i64,
     pub time: String,
@@ -109,24 +102,10 @@ pub struct MatchDetail {
     pub duration_min: String,
     pub remake: bool,
     pub self_puuid: String,
-    pub self_team_index: i32,
     pub teams: Vec<TeamSummary>,
 }
 
 /* ─── LCU 原始 JSON 结构 ───────────────────────────────────────── */
-
-/// flexString：兼容 JSON 中 string / number 两种形态
-fn flex_string(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
-        Value::Null => String::new(),
-        _ => {
-            let s = v.to_string();
-            s.trim_matches('"').to_string()
-        }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct LcuIdentity {
@@ -182,16 +161,10 @@ pub(crate) struct LcuStats {
     pub(crate) item6: i32,
     #[serde(default, rename = "perk0")]
     pub(crate) perk0: i32,
-    #[serde(default, rename = "totalMinionsKilled")]
-    pub(crate) total_minions_killed: i32,
-    #[serde(default, rename = "neutralMinionsKilled")]
-    pub(crate) neutral_minions_killed: i32,
     #[serde(default, rename = "goldEarned")]
     pub(crate) gold_earned: i32,
     #[serde(default, rename = "totalDamageDealtToChampions")]
     pub(crate) total_damage_dealt_to_champions: i32,
-    #[serde(default, rename = "totalHeal")]
-    pub(crate) total_heal: i32,
     #[serde(default, rename = "gameEndedInEarlySurrender")]
     pub(crate) game_ended_in_early_surrender: bool,
     #[serde(default, rename = "teamEarlySurrendered")]
@@ -265,11 +238,14 @@ pub(crate) struct LcuGame {
 
 /* ─── 解析入口 ─────────────────────────────────────────────────── */
 
+/// 解析战绩列表 → (摘要, 权威总场数)。
+/// 总场数来自 API `gameCount`；缺失或非正数时返回 None（未知），不得用本页条数冒充。
 pub fn parse_match_summaries(
     data: &[u8],
     self_puuid: &str,
-) -> Result<(Vec<MatchSummary>, i32), String> {
-    let v: Value = serde_json::from_slice(data).map_err(|e| format!("解析战绩列表失败: {e}"))?;
+) -> Result<(Vec<MatchSummary>, Option<i32>), crate::error::AppError> {
+    let v: Value = serde_json::from_slice(data)
+        .map_err(|e| crate::error::AppError::Parse(format!("解析战绩列表失败: {e}")))?;
     let games = v
         .get("games")
         .and_then(|g| g.get("games"))
@@ -279,8 +255,7 @@ pub fn parse_match_summaries(
     let game_count = v
         .get("games")
         .and_then(|g| g.get("gameCount"))
-        .and_then(|g| g.as_i64())
-        .unwrap_or(0);
+        .and_then(|g| g.as_i64());
 
     let mut summaries = Vec::with_capacity(games.len());
     for raw in &games {
@@ -294,42 +269,69 @@ pub fn parse_match_summaries(
         summaries.push(build_summary(&g, &p));
     }
 
-    let count = if game_count <= 0 {
-        summaries.len() as i32
-    } else {
-        game_count as i32
-    };
+    let count = game_count.filter(|&c| c > 0).map(|c| c as i32);
     Ok((summaries, count))
 }
 
-pub fn parse_match_detail(data: &[u8], self_puuid: &str) -> Result<MatchDetail, String> {
-    let g: LcuGame = serde_json::from_slice(data).map_err(|e| format!("解析对局明细失败: {e}"))?;
+pub fn parse_match_detail(
+    data: &[u8],
+    self_puuid: &str,
+) -> Result<MatchDetail, crate::error::AppError> {
+    let g: LcuGame = serde_json::from_slice(data)
+        .map_err(|e| crate::error::AppError::Parse(format!("解析对局明细失败: {e}")))?;
     if g.participants.is_empty() {
-        return Err("对局明细无参与者数据".into());
+        return Err(crate::error::AppError::Parse("对局明细无参与者数据".into()));
     }
 
     let qi = queue_info_for(g.queue_id);
+    let id_by_id: HashMap<i32, &LcuIdentity> = g
+        .participant_identities
+        .iter()
+        .map(|ident| (ident.participant_id, ident))
+        .collect();
+    let remake = is_remake(&g);
 
-    let mut id_by_id: HashMap<i32, &LcuIdentity> = HashMap::new();
-    for ident in &g.participant_identities {
-        id_by_id.insert(ident.participant_id, ident);
-    }
+    let (mut rows, self_key) = build_rows(&g, &id_by_id, remake, self_puuid, &qi);
+    normalize_damage(&qi, &mut rows);
+    rank_rows(&mut rows);
+    let (order, mut buckets) = group_teams(rows, &qi, self_key);
+    let teams = summarize_teams(&order, &mut buckets);
 
-    let mut remake = g.game_ended_in_early_surrender;
+    Ok(MatchDetail {
+        game_id: g.game_id,
+        queue_id: g.queue_id,
+        queue_name: qi.name,
+        arena: qi.arena,
+        game_creation: g.game_creation,
+        time: format_time(g.game_creation),
+        game_duration: g.game_duration,
+        duration: format_duration(g.game_duration),
+        duration_min: format!("{}分", g.game_duration / 60),
+        remake,
+        self_puuid: self_puuid.to_string(),
+        teams,
+    })
+}
+
+/// 由参赛者构建明细行并标记本人行；返回 (行集, 本人所在分组键)。
+fn build_rows(
+    g: &LcuGame,
+    id_by_id: &HashMap<i32, &LcuIdentity>,
+    remake: bool,
+    self_puuid: &str,
+    qi: &super::QueueInfo,
+) -> (Vec<PlayerRow>, String) {
     let mut rows: Vec<PlayerRow> = Vec::with_capacity(g.participants.len());
     let mut self_key = String::new();
 
     for p in &g.participants {
         let s = &p.stats;
-        if s.game_ended_in_early_surrender || s.team_early_surrendered {
-            remake = true;
-        }
         let mut row = PlayerRow {
             participant_id: p.participant_id,
             team_id: p.team(),
             placement: s.subteam_placement,
-            puuid: String::new(),
-            summoner_id: String::new(),
+            puuid: None,
+            summoner_id: None,
             name: String::new(),
             profile_icon_id: 0,
             champion_id: p.champion_id,
@@ -344,16 +346,14 @@ pub fn parse_match_detail(data: &[u8], self_puuid: &str) -> Result<MatchDetail, 
             items: vec![
                 s.item0, s.item1, s.item2, s.item3, s.item4, s.item5, s.item6,
             ],
-            cs: s.total_minions_killed + s.neutral_minions_killed,
             gold: s.gold_earned,
             total_damage: s.total_damage_dealt_to_champions,
-            total_heal: s.total_heal,
             win: s.win,
-            remake: s.game_ended_in_early_surrender || s.team_early_surrendered,
+            remake,
             augment_ids: augment_ids(s),
             tier_short: tier_cn(&s.highest_achieved_season_tier),
             dmg_ratio: 0.0,
-            rating: rating(
+            match_rating: rating(
                 s.kills,
                 s.deaths,
                 s.assists,
@@ -362,25 +362,33 @@ pub fn parse_match_detail(data: &[u8], self_puuid: &str) -> Result<MatchDetail, 
                 s.win,
             ),
             rating_rank: 0,
-            kill_pct: 0,
+            kill_participation: 0,
             is_self: false,
         };
         if let Some(ident) = id_by_id.get(&p.participant_id) {
-            row.puuid = flex_string(&ident.player.puuid);
-            row.summoner_id = flex_string(&ident.player.summoner_id);
+            row.puuid = opt_id(flex_value(&ident.player.puuid));
+            row.summoner_id = opt_id(flex_value(&ident.player.summoner_id));
             row.profile_icon_id = ident.player.profile_icon;
             row.name = identity_name(ident, p.participant_id);
         } else {
             row.name = format!("玩家 {}", p.participant_id);
         }
-        if !self_puuid.is_empty() && row.puuid.eq_ignore_ascii_case(self_puuid) {
+        if !self_puuid.is_empty()
+            && row
+                .puuid
+                .as_deref()
+                .is_some_and(|p| p.eq_ignore_ascii_case(self_puuid))
+        {
             row.is_self = true;
-            self_key = group_key(&qi, row.team_id, row.placement);
+            self_key = group_key(qi, row.team_id, row.placement);
         }
         rows.push(row);
     }
+    (rows, self_key)
+}
 
-    // 伤转 + 参团率
+/// 行级派生：队伍内伤害占比（dmg_ratio）与参团率（kill_pct）。
+fn normalize_damage(qi: &super::QueueInfo, rows: &mut [PlayerRow]) {
     #[derive(Default, Clone)]
     struct GroupSum {
         dmg: i64,
@@ -388,30 +396,33 @@ pub fn parse_match_detail(data: &[u8], self_puuid: &str) -> Result<MatchDetail, 
         n: i64,
     }
     let mut sums: HashMap<String, GroupSum> = HashMap::new();
-    for r in &rows {
-        let k = group_key(&qi, r.team_id, r.placement);
+    for r in rows.iter() {
+        let k = group_key(qi, r.team_id, r.placement);
         let st = sums.entry(k).or_default();
         st.dmg += r.total_damage as i64;
         st.kills += r.kills as i64;
         st.n += 1;
     }
     for r in rows.iter_mut() {
-        let k = group_key(&qi, r.team_id, r.placement);
+        let k = group_key(qi, r.team_id, r.placement);
         let st = sums.get(&k).cloned().unwrap_or_default();
         let avg = st.dmg as f64 / (st.n as f64).max(1.0);
         if avg > 0.0 {
             r.dmg_ratio = ((r.total_damage as f64 / avg) * 10.0).round() / 10.0;
         }
         if st.kills > 0 {
-            r.kill_pct = (((r.kills + r.assists) as f64 / st.kills as f64) * 100.0).round() as i32;
+            r.kill_participation =
+                (((r.kills + r.assists) as f64 / st.kills as f64) * 100.0).round() as i32;
         }
     }
+}
 
-    // 评分全局名次
+/// 全局评分排名（跨全部行；评分并列按总伤害破平）。
+fn rank_rows(rows: &mut [PlayerRow]) {
     let mut rank_order: Vec<usize> = (0..rows.len()).collect();
     rank_order.sort_by(|&a, &b| {
-        let ra = rows[a].rating;
-        let rb = rows[b].rating;
+        let ra = rows[a].match_rating;
+        let rb = rows[b].match_rating;
         if (ra - rb).abs() > f64::EPSILON {
             rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal)
         } else {
@@ -421,19 +432,28 @@ pub fn parse_match_detail(data: &[u8], self_puuid: &str) -> Result<MatchDetail, 
     for (rank, &idx) in rank_order.iter().enumerate() {
         rows[idx].rating_rank = (rank + 1) as i32;
     }
+}
 
-    // 分组
-    #[derive(Default)]
-    struct Bucket {
-        team_id: i32,
-        placement: i32,
-        win: bool,
-        rows: Vec<PlayerRow>,
-    }
+/// 明细分组桶（队伍 / 竞技场子队）。
+#[derive(Default)]
+struct Bucket {
+    team_id: i32,
+    placement: i32,
+    win: bool,
+    rows: Vec<PlayerRow>,
+}
+
+/// 按队伍/子队分桶并定序：本人队最前；竞技场按 placement、其余按 teamID 升序。
+/// 竞技场 placement=1 的分组强制判胜；self_key 为空时以首组兜底。
+fn group_teams(
+    rows: Vec<PlayerRow>,
+    qi: &super::QueueInfo,
+    mut self_key: String,
+) -> (Vec<String>, HashMap<String, Bucket>) {
     let mut order: Vec<String> = Vec::new();
     let mut buckets: HashMap<String, Bucket> = HashMap::new();
     for r in rows {
-        let k = group_key(&qi, r.team_id, r.placement);
+        let k = group_key(qi, r.team_id, r.placement);
         let b = buckets.entry(k.clone()).or_insert_with(|| {
             order.push(k.clone());
             Bucket {
@@ -449,11 +469,11 @@ pub fn parse_match_detail(data: &[u8], self_puuid: &str) -> Result<MatchDetail, 
     if self_key.is_empty() {
         if let Some(first) = order.first() {
             if let Some(b) = buckets.get(first) {
-                self_key = group_key(&qi, b.team_id, b.placement);
+                self_key = group_key(qi, b.team_id, b.placement);
             }
         }
     }
-    // 竞技场：第 1 名小队视为胜利
+    // 竞技场按名次 1 判定胜利
     if qi.arena {
         for b in buckets.values_mut() {
             if b.placement == 1 {
@@ -462,7 +482,7 @@ pub fn parse_match_detail(data: &[u8], self_puuid: &str) -> Result<MatchDetail, 
         }
     }
 
-    // 排序：本人队伍优先；其余按 placement → teamID 升序
+    // 排序：本人队伍最前，其余按 placement 与 teamID 升序
     order.sort_by(|a, b| {
         if a == &self_key {
             return std::cmp::Ordering::Less;
@@ -478,13 +498,19 @@ pub fn parse_match_detail(data: &[u8], self_puuid: &str) -> Result<MatchDetail, 
             ba.team_id.cmp(&bb.team_id)
         }
     });
+    (order, buckets)
+}
 
+/// 汇总各分组为队伍视图：行按评分降序；击杀/死亡/助攻/经济/伤害求和。
+fn summarize_teams(order: &[String], buckets: &mut HashMap<String, Bucket>) -> Vec<TeamSummary> {
     let mut teams = Vec::with_capacity(order.len());
-    for k in &order {
-        let b = buckets.get_mut(k).unwrap();
+    for k in order {
+        let Some(b) = buckets.get_mut(k) else {
+            continue;
+        };
         b.rows.sort_by(|x, y| {
-            y.rating
-                .partial_cmp(&x.rating)
+            y.match_rating
+                .partial_cmp(&x.match_rating)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         let mut ts = TeamSummary {
@@ -507,33 +533,24 @@ pub fn parse_match_detail(data: &[u8], self_puuid: &str) -> Result<MatchDetail, 
         }
         teams.push(ts);
     }
-
-    Ok(MatchDetail {
-        game_id: g.game_id,
-        queue_id: g.queue_id,
-        queue_name: qi.name,
-        map_name: qi.map,
-        arena: qi.arena,
-        game_creation: g.game_creation,
-        time: format_time(g.game_creation),
-        game_duration: g.game_duration,
-        duration: format_duration(g.game_duration),
-        duration_min: format!("{}分", g.game_duration / 60),
-        remake,
-        self_puuid: self_puuid.to_string(),
-        self_team_index: 0,
-        teams,
-    })
+    teams
 }
 
 /* ─── 纯函数工具 ───────────────────────────────────────────────── */
+
+/// 评分权重：KDA 部分 / 伤害万分位 / 经济万分位 / 胜利加成
+pub const W_KDA: f64 = 1.1;
+pub const W_DAMAGE: f64 = 1.2;
+pub const W_GOLD: f64 = 0.6;
+pub const WIN_BONUS: f64 = 1.5;
 
 pub fn rating(kills: i32, deaths: i32, assists: i32, damage: i32, gold: i32, win: bool) -> f64 {
     let mut kda_part = (kills + assists) as f64 / (deaths as f64).max(1.0);
     if kda_part > 10.0 {
         kda_part = 10.0;
     }
-    let mut r = kda_part * 1.1 + damage as f64 / 10000.0 * 1.2 + gold as f64 / 10000.0 * 0.6;
+    let mut r =
+        kda_part * W_KDA + damage as f64 / 10000.0 * W_DAMAGE + gold as f64 / 10000.0 * W_GOLD;
     if win {
         r += 1.5;
     }
@@ -603,13 +620,23 @@ pub(crate) fn pick_participant(g: &LcuGame, self_puuid: &str) -> LcuParticipant 
         }
         for p in &g.participants {
             if let Some(ident) = id_by_id.get(&p.participant_id) {
-                if flex_string(&ident.player.puuid).eq_ignore_ascii_case(self_puuid) {
+                if flex_value(&ident.player.puuid).eq_ignore_ascii_case(self_puuid) {
                     return p.clone();
                 }
             }
         }
     }
     g.participants[0].clone()
+}
+
+/// 重赛（无效对局）判定——**唯一口径**，列表 / 详情 / SGP 适配三处共用。
+/// 局级 `gameEndedInEarlySurrender` 为真，或任一参赛者带投降类标志
+/// （`gameEndedInEarlySurrender` / `teamEarlySurrendered`）即判重赛。
+pub(crate) fn is_remake(g: &LcuGame) -> bool {
+    g.game_ended_in_early_surrender
+        || g.participants
+            .iter()
+            .any(|p| p.stats.game_ended_in_early_surrender || p.stats.team_early_surrendered)
 }
 
 pub(crate) fn build_summary(g: &LcuGame, p: &LcuParticipant) -> MatchSummary {
@@ -620,11 +647,9 @@ pub(crate) fn build_summary(g: &LcuGame, p: &LcuParticipant) -> MatchSummary {
         queue_id: g.queue_id,
         queue_name: qi.name.clone(),
         queue_short: qi.short.clone(),
-        map_name: qi.map.clone(),
         arena: qi.arena,
         game_creation: g.game_creation,
         game_duration: g.game_duration,
-        time: format_time(g.game_creation),
         short_time: format_short_time(g.game_creation),
         duration: format_duration(g.game_duration),
         champion_id: p.champion_id,
@@ -637,17 +662,14 @@ pub(crate) fn build_summary(g: &LcuGame, p: &LcuParticipant) -> MatchSummary {
         assists: s.assists,
         kda: kda_string(s.kills, s.deaths, s.assists),
         win: s.win,
-        remake: g.game_ended_in_early_surrender || s.game_ended_in_early_surrender,
+        remake: is_remake(g),
         placement: s.subteam_placement,
         items: vec![
             s.item0, s.item1, s.item2, s.item3, s.item4, s.item5, s.item6,
         ],
-        cs: s.total_minions_killed + s.neutral_minions_killed,
         gold: s.gold_earned,
         total_damage: s.total_damage_dealt_to_champions,
-        total_heal: s.total_heal,
         augment_ids: augment_ids(s),
-        team_id: p.team(),
     }
 }
 
@@ -809,7 +831,7 @@ mod tests {
     #[test]
     fn parse_match_summaries_self_by_puuid_and_fallback() {
         let (sums, count) = parse_match_summaries(HISTORY_FIXTURE.as_bytes(), "PSELF").unwrap();
-        assert_eq!(count, 45);
+        assert_eq!(count, Some(45), "权威总场数来自 gameCount");
         assert_eq!(sums.len(), 2);
 
         let s = &sums[0];
@@ -822,7 +844,6 @@ mod tests {
         assert_eq!(s.duration, "15:24");
         assert_eq!(s.items[0], 3157);
         assert_eq!(s.items[6], 3340);
-        assert_eq!(s.cs, 7);
         assert_eq!(s.gold, 11767);
         assert_eq!(s.augment_ids, vec![7010, 7018]);
 
@@ -858,17 +879,17 @@ mod tests {
         let me = &self_team.players[0];
         assert!(me.is_self);
         assert_eq!(me.name, "歪比#60021");
-        assert_eq!(me.summoner_id, "3333");
+        assert_eq!(me.summoner_id.as_deref(), Some("3333"));
         assert!(
-            self_team.players[0].rating > self_team.players[1].rating,
+            self_team.players[0].match_rating > self_team.players[1].match_rating,
             "team players not sorted by rating desc"
         );
         assert_eq!(me.dmg_ratio, 1.5);
         assert_eq!(self_team.players[1].dmg_ratio, 0.5);
         assert_eq!(self_team.deaths, 20);
         assert_eq!(self_team.assists, 35);
-        assert_eq!(me.kill_pct, 240);
-        assert_eq!(self_team.players[1].kill_pct, 210);
+        assert_eq!(me.kill_participation, 240);
+        assert_eq!(self_team.players[1].kill_participation, 210);
 
         let mut rank_set = std::collections::HashSet::new();
         for team in &d.teams {
@@ -903,10 +924,10 @@ mod tests {
             if p.is_self {
                 self_found = true;
                 assert_eq!(p.dmg_ratio, 0.9, "self dmgRatio");
-                assert_eq!(p.kill_pct, 100, "self killPct");
+                assert_eq!(p.kill_participation, 100, "self killParticipation");
             } else {
                 assert_eq!(p.dmg_ratio, 1.1, "mate dmgRatio");
-                assert_eq!(p.kill_pct, 140, "mate killPct");
+                assert_eq!(p.kill_participation, 140, "mate killParticipation");
             }
         }
         assert!(self_found, "self row missing in own subteam");
@@ -916,5 +937,52 @@ mod tests {
     fn parse_match_detail_invalid_input() {
         assert!(parse_match_detail("{}".as_bytes(), "").is_err());
         assert!(parse_match_detail(b"not-json", "").is_err());
+    }
+
+    /// C2 回归：仅参赛者级 `teamEarlySurrendered=true` 时，列表与详情的 remake 必须同判。
+    #[test]
+    fn remake_consistent_between_summary_and_detail() {
+        // 局级 gameEndedInEarlySurrender 不出现（默认 false），仅参赛者级 teamEarlySurrendered=true
+        let game = r#"{"gameId":42,"gameCreation":1705329000000,"gameDuration":300,"queueId":420,
+          "participantIdentities":[
+            {"participantId":1,"player":{"puuid":"PSELF","gameName":"甲","tagLine":"111"}},
+            {"participantId":2,"player":{"puuid":"OTHER","gameName":"乙","tagLine":"222"}}],
+          "participants":[
+            {"participantId":1,"teamID":100,"championId":1,
+             "stats":{"win":false,"kills":0,"deaths":0,"assists":0,
+                      "gameEndedInEarlySurrender":false,"teamEarlySurrendered":true}},
+            {"participantId":2,"teamID":200,"championId":2,
+             "stats":{"win":true,"kills":1,"deaths":0,"assists":0,
+                      "gameEndedInEarlySurrender":false,"teamEarlySurrendered":false}}]}"#;
+
+        let list = format!(r#"{{"games":{{"games":[{game}],"gameCount":1}}}}"#);
+        let (sums, _) = parse_match_summaries(list.as_bytes(), "PSELF").unwrap();
+        let d = parse_match_detail(game.as_bytes(), "PSELF").unwrap();
+
+        assert!(d.remake, "detail：teamEarlySurrendered 应判重赛");
+        assert!(
+            sums[0].remake,
+            "summary：teamEarlySurrendered 应判重赛（此前漏判）"
+        );
+        assert_eq!(sums[0].remake, d.remake, "列表与详情 remake 口径必须一致");
+    }
+
+    /// C2 回归：局级 gameEndedInEarlySurrender=true 时两口径同样一致。
+    #[test]
+    fn remake_game_level_flag_consistent() {
+        let game = r#"{"gameId":43,"gameCreation":1705329000000,"gameDuration":300,"queueId":420,
+          "gameEndedInEarlySurrender":true,
+          "participantIdentities":[
+            {"participantId":1,"player":{"puuid":"PSELF","gameName":"甲","tagLine":"111"}}],
+          "participants":[
+            {"participantId":1,"teamID":100,"championId":1,
+             "stats":{"win":false,"kills":0,"deaths":0,"assists":0}}]}"#;
+
+        let list = format!(r#"{{"games":{{"games":[{game}],"gameCount":1}}}}"#);
+        let (sums, _) = parse_match_summaries(list.as_bytes(), "PSELF").unwrap();
+        let d = parse_match_detail(game.as_bytes(), "PSELF").unwrap();
+
+        assert!(sums[0].remake && d.remake);
+        assert_eq!(sums[0].remake, d.remake);
     }
 }

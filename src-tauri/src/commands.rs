@@ -1,5 +1,6 @@
 //! 前端绑定命令层：参数校验 + 调用服务 + 事件桥接（对齐 Go app.go）。
 //! Tauri 命令为 snake_case 函数名；具名参数 JS 侧用 camelCase（Tauri 2 默认转换）。
+//! 错误边界：内部 `AppError` 在此转用户可读文案（`String`）给前端。
 
 use std::sync::atomic::Ordering;
 
@@ -31,7 +32,7 @@ pub async fn set_config(app: AppHandle, cfg: config::Config) -> Result<(), Strin
     state.monitor.set_client_path(&cfg.client_path).await;
     state.hist.set_page_size(cfg.page_size as i32);
     state.hist.set_sgp_enabled(cfg.sgp_enabled);
-    state.game.set_career_limit(cfg.page_size as i32);
+    state.game.set_career_limit(cfg.career_limit as i32);
     Ok(())
 }
 
@@ -48,7 +49,7 @@ pub async fn get_matches(
     puuid: String,
     page: i32,
 ) -> Result<MatchPage, String> {
-    state.hist.get_matches(&puuid, page).await
+    Ok(state.hist.get_matches(&puuid, page).await?)
 }
 
 #[tauri::command]
@@ -57,7 +58,7 @@ pub async fn get_match_detail(
     game_id: i64,
     self_puuid: String,
 ) -> Result<MatchDetail, String> {
-    state.hist.get_match_detail(game_id, &self_puuid).await
+    Ok(state.hist.get_match_detail(game_id, &self_puuid).await?)
 }
 
 #[tauri::command]
@@ -65,20 +66,20 @@ pub async fn search_summoner(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<SummonerResult, String> {
-    state.hist.search_summoner(&name).await
+    Ok(state.hist.search_summoner(&name).await?)
 }
 
 #[tauri::command]
 pub async fn get_self_summoner(state: State<'_, AppState>) -> Result<SummonerResult, String> {
-    state.hist.get_self_summoner().await
+    Ok(state.hist.get_self_summoner().await?)
 }
 
 #[tauri::command]
 pub async fn get_players_ranked(
     state: State<'_, AppState>,
-    summoner_ids: Vec<String>,
+    query_ids: Vec<String>,
 ) -> Result<Vec<RankedInfo>, String> {
-    state.hist.get_players_ranked(&summoner_ids).await
+    Ok(state.hist.get_players_ranked(&query_ids).await?)
 }
 
 #[tauri::command]
@@ -87,7 +88,7 @@ pub async fn get_match_asset(
     kind: String,
     id: i32,
 ) -> Result<AssetResult, String> {
-    state.hist.get_asset(&kind, id).await
+    Ok(state.hist.get_asset(&kind, id).await?)
 }
 
 /* ── M3 对局信息 ── */
@@ -95,23 +96,23 @@ pub async fn get_match_asset(
 #[tauri::command]
 pub async fn get_gameflow_state(
     state: State<'_, AppState>,
-    queue_filter: Vec<i32>,
+    queue_filter: Option<Vec<i32>>,
 ) -> Result<ViewState, String> {
-    state.game.get_gameflow_state(queue_filter).await
+    Ok(state.game.get_gameflow_state(queue_filter).await?)
 }
 
 /* ── 更新（tauri-plugin-updater） ── */
 
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<crate::update::Info, String> {
-    crate::update::check(&app).await
+    Ok(crate::update::check(&app).await?)
 }
 
 /// 下载并安装更新（安装版/便携版自动分流；进度经 update:progress）。
 /// 成功后强制退出本进程（绕过 closeToTray）。
 #[tauri::command]
 pub async fn download_and_install_update(app: AppHandle) -> Result<(), String> {
-    crate::update::download_install_and_quit(app).await
+    Ok(crate::update::download_install_and_quit(app).await?)
 }
 
 /// 是否便携模式（exe 旁 portable.flag）

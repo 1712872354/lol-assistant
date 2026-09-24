@@ -1,6 +1,7 @@
 import { Gamepad2, MonitorX } from "lucide-react";
 import { useEffect } from "react";
 import { useAppStore } from "@/stores/appStore";
+import { phaseLabelCN } from "@/lib/phase";
 import { useGameinfoStore } from "@/stores/gameinfoStore";
 import { TeamPanel } from "./TeamPanel";
 
@@ -13,6 +14,7 @@ export function GameInfoView() {
   const sideFilter = useGameinfoStore((s) => s.sideFilter);
   const view = useGameinfoStore((s) => s.view);
   const refresh = useGameinfoStore((s) => s.refresh);
+  const error = useGameinfoStore((s) => s.error);
 
   useEffect(() => {
     void refresh();
@@ -42,6 +44,11 @@ export function GameInfoView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 p-2">
+      {error ? (
+        <div className="shrink-0 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-1.5 text-xs text-destructive">
+          刷新失败：{error}
+        </div>
+      ) : null}
       {empty ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">
           {empty.icon}
@@ -73,9 +80,9 @@ export function GameInfoView() {
               <span className="opacity-40">·</span>
               <span>
                 评分{" "}
-                <span className="tnum font-semibold text-foreground">{allyTeam.rating}</span>
+                <span className="tnum font-semibold text-foreground">{allyTeam.teamScore}</span>
                 <span className="mx-1 opacity-50">vs</span>
-                <span className="tnum font-semibold text-foreground">{enemyTeam.rating}</span>
+                <span className="tnum font-semibold text-foreground">{enemyTeam.teamScore}</span>
               </span>
             </div>
           ) : null}
@@ -86,6 +93,7 @@ export function GameInfoView() {
                 key={team.key}
                 team={team}
                 offline={offline}
+                phaseLabel={phaseLabelCN(view.phase)}
                 opponent={
                   sideFilter === "all"
                     ? team.key === "ally"

@@ -134,7 +134,7 @@ impl Client {
         Self { http }
     }
 
-    async fn get_json(&self, path: &str) -> Result<Value, String> {
+    async fn get_json(&self, path: &str) -> Result<Value, crate::error::AppError> {
         let url = format!("{BASE}{path}");
         let resp = self
             .http
@@ -143,31 +143,36 @@ impl Client {
             .await
             .map_err(|e| format!("live client {path}: {e}"))?;
         if resp.status().as_u16() != 200 {
-            return Err(format!(
-                "live client {path}: http {}",
-                resp.status().as_u16()
-            ));
+            return Err(crate::error::AppError::Http(format!(
+                "live client {path}: {}",
+                resp.status()
+            )));
         }
         let bytes = resp
             .bytes()
             .await
             .map_err(|e| format!("live client {path} read: {e}"))?;
         if bytes.len() > 4 * 1024 * 1024 {
-            return Err(format!("live client {path}: body too large"));
+            return Err(crate::error::AppError::Http(format!(
+                "live client {path}: body too large"
+            )));
         }
-        serde_json::from_slice(&bytes).map_err(|e| format!("live client {path} decode: {e}"))
+        serde_json::from_slice(&bytes)
+            .map_err(|e| crate::error::AppError::Parse(format!("live client {path} decode: {e}")))
     }
 
-    pub async fn player_list(&self) -> Result<Vec<Player>, String> {
+    pub async fn player_list(&self) -> Result<Vec<Player>, crate::error::AppError> {
         let v = self.get_json(PATH_PLAYER_LIST).await?;
-        serde_json::from_value(v).map_err(|e| format!("live client playerlist decode: {e}"))
+        serde_json::from_value(v).map_err(|e| {
+            crate::error::AppError::Parse(format!("live client playerlist decode: {e}"))
+        })
     }
 
-    pub async fn active_player_name(&self) -> Result<String, String> {
+    pub async fn active_player_name(&self) -> Result<String, crate::error::AppError> {
         let v = self.get_json(PATH_ACTIVE_PLAYER_NAME).await?;
-        v.as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| "live client activeplayername: not a string".to_string())
+        v.as_str().map(|s| s.to_string()).ok_or_else(|| {
+            crate::error::AppError::Parse("live client activeplayername: not a string".into())
+        })
     }
 }
 

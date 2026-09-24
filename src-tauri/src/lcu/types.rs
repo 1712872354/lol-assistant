@@ -42,12 +42,25 @@ pub struct ConnStatus {
 }
 
 /// 已验证的 LCU 连接凭据
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Debug` 手写实现：token 一律掩码为 `***`，防止凭据随日志/panic 输出泄漏。
+#[derive(Clone, PartialEq, Eq)]
 pub struct Credentials {
     pub pid: i32,
     pub port: u16,
     pub token: String,
     pub platform_id: String,
+}
+
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials")
+            .field("pid", &self.pid)
+            .field("port", &self.port)
+            .field("token", &"***")
+            .field("platform_id", &self.platform_id)
+            .finish()
+    }
 }
 
 impl Credentials {
@@ -65,4 +78,29 @@ pub struct LcuEvent {
     pub event_type: String,
     #[serde(default)]
     pub data: serde_json::Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T2.2 回归：Debug 输出必须掩码 token，防止凭据随日志/panic 泄漏。
+    #[test]
+    fn credentials_debug_masks_token() {
+        let c = Credentials {
+            pid: 1,
+            port: 2,
+            token: "secret-token-abc".into(),
+            platform_id: "HN1".into(),
+        };
+        let dbg = format!("{c:?}");
+        assert!(
+            !dbg.contains("secret-token-abc"),
+            "token 不得出现在 Debug 输出: {dbg}"
+        );
+        assert!(dbg.contains("***"), "应有掩码标记: {dbg}");
+        // 其余字段仍可诊断
+        assert!(dbg.contains("HN1"));
+        assert!(dbg.contains('1'), "pid 应保留: {dbg}");
+    }
 }

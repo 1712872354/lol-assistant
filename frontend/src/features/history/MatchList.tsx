@@ -5,12 +5,13 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UNRANKED } from "@/lib/rank";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
 import { useHistoryStore, type HistoryTab } from "@/stores/historyStore";
 import { errMsg, fetchMatches, fetchPlayersRanked } from "./api";
 import { MatchCard } from "./MatchCard";
-import { buildRankedMap, normId, tierToEn } from "./format";
+import { buildRankedMap, normId } from "./format";
 
 /** 左列固定展示条数：10 条均分高度，不滚动 */
 const VISIBLE_COUNT = 10;
@@ -18,9 +19,9 @@ const VISIBLE_COUNT = 10;
 /** 召唤师当前段位展示串（对齐参考图列表头） */
 function pickSoloLabel(solo?: string, flex?: string): string {
   const s = (solo ?? "").trim();
-  if (s && s !== "未定级") return s;
+  if (s && s !== UNRANKED) return s;
   const f = (flex ?? "").trim();
-  if (f && f !== "未定级") return f;
+  if (f && f !== UNRANKED) return f;
   return "";
 }
 
@@ -75,11 +76,9 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
   /** 仅展示前 10 条，左列不滚动 */
   const list = useMemo(() => filtered.slice(0, VISIBLE_COUNT), [filtered]);
 
-  const gameCount = q.data?.gameCount ?? 0;
-  const totalPages = Math.max(q.data?.totalPages ?? 1, 1);
+  // total/totalPages 未知时缺省：此时仅支持步进翻页（hasMore 决定能否前进）
+  const totalPages = q.data?.totalPages ?? null;
   const hasMore = q.data?.hasMore ?? false;
-  void gameCount;
-  void totalPages;
 
   useEffect(() => {
     if (list.length === 0) {
@@ -99,9 +98,8 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
   }, [q.dataUpdatedAt, tab.puuid, queueFilter]);
 
   const goto = (p: number) => {
-    // hasMore 时允许前往尚未确认的下一页；否则夹到 totalPages-1
-    // 上限不得依赖目标页码 p（否则输入 999 会跳到 998）
-    const max = hasMore ? totalPages : Math.max(totalPages - 1, 0);
+    // 总页数已知 → 夹到最后一页；未知 → 仅允许步进到已确认的下一页
+    const max = totalPages != null ? totalPages - 1 : hasMore ? page + 1 : page;
     const v = Math.min(Math.max(0, p), max);
     if (v !== page) setPage(tab.puuid, v);
   };
@@ -144,7 +142,7 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
               selfRankLabel ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground",
             )}
           >
-            {tierToEn(selfRankLabel) || "未定级"}
+            {selfRankLabel || UNRANKED}
           </span>
           <span className="mx-1 opacity-40">·</span>
           第 {page + 1} 页
@@ -207,7 +205,7 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
           onKeyDown={(e) => {
             if (e.key === "Enter") commitJump();
           }}
-          disabled={offline || totalPages <= 1}
+          disabled={offline || totalPages == null || totalPages <= 1}
           className="h-7 w-12 px-0 text-center text-xs tnum"
           aria-label="页码"
         />

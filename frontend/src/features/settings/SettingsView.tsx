@@ -83,6 +83,22 @@ export function SettingsView() {
             </ToggleGroup>
           </Row>
           <Separator />
+          <Row label="战绩数量" hint="对局页每人近况展示与统计场数（10/20/30），默认 20">
+            <ToggleGroup
+              type="single"
+              size="sm"
+              value={String(config.careerLimit)}
+              onValueChange={(v) => v && patch({ careerLimit: Number(v) })}
+              className="rounded-md border bg-card p-0.5"
+            >
+              {["10", "20", "30"].map((n) => (
+                <ToggleGroupItem key={n} value={n}>
+                  {n}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </Row>
+          <Separator />
           <Row label="SGP 云端数据源" hint="段位/战绩优先经腾讯 SGP 获取，失败自动回退 LCU；仅腾讯国服生效">
             <ToggleGroup
               type="single"

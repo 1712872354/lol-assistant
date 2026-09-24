@@ -165,7 +165,10 @@ fn is_champ_select(uri: &str) -> bool {
 }
 
 /// 单次握手+读循环：正常结束返回 Ok，网络/握手失败返回 Err。
-async fn session_once<F>(creds: &Credentials, on_event: &mut F) -> Result<(), String>
+async fn session_once<F>(
+    creds: &Credentials,
+    on_event: &mut F,
+) -> Result<(), crate::error::AppError>
 where
     F: FnMut(LcuEvent),
 {
@@ -227,7 +230,9 @@ where
                         log::info!("[ws] close frame");
                         return Ok(());
                     }
-                    Some(Err(e)) => return Err(format!("ws read: {e}")),
+                    Some(Err(e)) => {
+                        return Err(crate::error::AppError::Http(format!("ws read: {e}")))
+                    }
                     None => {
                         log::info!("[ws] stream ended");
                         return Ok(());
@@ -237,7 +242,7 @@ where
             }
             _ = ping.tick() => {
                 if let Err(e) = write.send(Message::Ping(Vec::new())).await {
-                    return Err(format!("ws ping: {e}"));
+                    return Err(crate::error::AppError::Http(format!("ws ping: {e}")));
                 }
             }
             _ = trailing.tick() => {
@@ -250,7 +255,10 @@ where
 }
 
 /// 连接循环：指数退避重连（1s→15s），直到进程 abort（monitor 换代/disconnect）。
-pub async fn connect_loop<F>(creds: Credentials, mut on_event: F) -> Result<(), String>
+pub async fn connect_loop<F>(
+    creds: Credentials,
+    mut on_event: F,
+) -> Result<(), crate::error::AppError>
 where
     F: FnMut(LcuEvent),
 {

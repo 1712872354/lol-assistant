@@ -1,15 +1,16 @@
+import type { Tone } from "@/lib/tone";
 import type { MatchSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { AssetImg } from "./AssetImg";
+import { AssetImg } from "@/lib/AssetImg";
 import { resultOf } from "./format";
 
 /** 结果色调：白底卡片 + 左侧色条（胜=绿 / 负=红 / 重赛=灰） */
-const BAR_CLASS: Record<"win" | "loss" | "remake", string> = {
+const BAR_CLASS: Record<Tone, string> = {
   win: "border-l-win-bar",
   loss: "border-l-loss-bar",
   remake: "border-l-remake-bar",
 };
-const LABEL_CLASS: Record<"win" | "loss" | "remake", string> = {
+const LABEL_CLASS: Record<Tone, string> = {
   win: "text-win-fg",
   loss: "text-loss-fg",
   remake: "text-remake-fg",

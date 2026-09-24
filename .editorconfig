@@ -1,0 +1,22 @@
+# 统一编辑器约定：防 UTF-8 中文注释被按 GBK 重写（历史上出现过「假乱码」问题）
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{rs,ts,tsx,js,jsx,json,yml,yaml,md,toml}]
+charset = utf-8
+
+[*.rs]
+indent_style = space
+indent_size = 4
+
+[*.{ts,tsx,js,jsx,json,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

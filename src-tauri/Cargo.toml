@@ -1,6 +1,6 @@
 [package]
 name = "lol-assistant"
-version = "1.0.7"
+version = "1.1.0"
 description = "轻量级英雄联盟助手：历史战绩 + 对局信息"
 authors = ["LOL Assistant"]
 edition = "2021"

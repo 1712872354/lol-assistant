@@ -43,22 +43,24 @@ pub fn is_portable() -> bool {
             .unwrap_or(false)
 }
 
-fn current_exe_dir() -> Result<PathBuf, String> {
+fn current_exe_dir() -> Result<PathBuf, crate::error::AppError> {
     std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
         .map(Path::to_path_buf)
-        .ok_or_else(|| "无法定位可执行文件目录".to_string())
+        .ok_or_else(|| crate::error::AppError::Updater("无法定位可执行文件目录".into()))
 }
 
-fn ensure_portable_runtime() -> Result<(), String> {
+fn ensure_portable_runtime() -> Result<(), crate::error::AppError> {
     if !is_portable() {
-        return Err("便携版更新仅支持便携模式".to_string());
+        return Err(crate::error::AppError::Updater(
+            "便携版更新仅支持便携模式".to_string(),
+        ));
     }
     Ok(())
 }
 
-fn ensure_install_directory_writable(directory: &Path) -> Result<(), String> {
+fn ensure_install_directory_writable(directory: &Path) -> Result<(), crate::error::AppError> {
     let probe = directory.join(format!(".lol-update-write-test-{}", Uuid::new_v4()));
     fs::write(&probe, b"update-write-test").map_err(|e| e.to_string())?;
     fs::remove_file(probe).map_err(|e| e.to_string())?;
@@ -66,7 +68,9 @@ fn ensure_install_directory_writable(directory: &Path) -> Result<(), String> {
 }
 
 /// 从插件 Update 下载 zip 并解压暂存（进度经 update:progress）。
-async fn download_and_stage(app: &AppHandle) -> Result<StagedPortableUpdate, String> {
+async fn download_and_stage(
+    app: &AppHandle,
+) -> Result<StagedPortableUpdate, crate::error::AppError> {
     ensure_portable_runtime()?;
     ensure_install_directory_writable(&current_exe_dir()?)?;
 
@@ -97,7 +101,9 @@ async fn download_and_stage(app: &AppHandle) -> Result<StagedPortableUpdate, Str
         .map_err(|e| format!("便携版更新下载或签名校验失败: {e}"))?;
 
     if bytes.len() as u64 > MAX_PAYLOAD_BYTES {
-        return Err("便携版更新包大小超出允许上限".to_string());
+        return Err(crate::error::AppError::Updater(
+            "便携版更新包大小超出允许上限".to_string(),
+        ));
     }
     let _ = app.emit(
         "update:progress",
@@ -108,11 +114,16 @@ async fn download_and_stage(app: &AppHandle) -> Result<StagedPortableUpdate, Str
 }
 
 /// 安全解压：只提取 PORTABLE_ROOT 下 exe + marker，跳过 data/，拒绝路径逃逸与符号链接。
-fn extract_portable_payload(bytes: &[u8], destination: &Path) -> Result<(), String> {
+fn extract_portable_payload(
+    bytes: &[u8],
+    destination: &Path,
+) -> Result<(), crate::error::AppError> {
     let cursor = Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("便携版更新包无效: {e}"))?;
     if archive.len() > MAX_ARCHIVE_ENTRIES {
-        return Err("便携版更新包内文件数量超出上限".to_string());
+        return Err(crate::error::AppError::Updater(
+            "便携版更新包内文件数量超出上限".to_string(),
+        ));
     }
 
     let mut found_exe = false;
@@ -128,12 +139,16 @@ fn extract_portable_payload(bytes: &[u8], destination: &Path) -> Result<(), Stri
             .ok_or_else(|| "便携版更新包含不安全路径".to_string())?;
         let mut components = enclosed.components();
         if components.next() != Some(Component::Normal(PORTABLE_ROOT.as_ref())) {
-            return Err("便携版更新包根目录不符合预期".to_string());
+            return Err(crate::error::AppError::Updater(
+                "便携版更新包根目录不符合预期".to_string(),
+            ));
         }
         let mut relative = PathBuf::new();
         for component in components {
             let Component::Normal(name) = component else {
-                return Err("便携版更新包含不安全相对路径".to_string());
+                return Err(crate::error::AppError::Updater(
+                    "便携版更新包含不安全相对路径".to_string(),
+                ));
             };
             relative.push(name);
         }
@@ -141,7 +156,9 @@ fn extract_portable_payload(bytes: &[u8], destination: &Path) -> Result<(), Stri
             continue;
         }
         if entry.is_symlink() {
-            return Err("便携版更新包含符号链接".to_string());
+            return Err(crate::error::AppError::Updater(
+                "便携版更新包含符号链接".to_string(),
+            ));
         }
 
         if relative.starts_with("data") {
@@ -150,40 +167,53 @@ fn extract_portable_payload(bytes: &[u8], destination: &Path) -> Result<(), Stri
 
         let output = if relative == Path::new(PORTABLE_EXE) {
             if found_exe {
-                return Err("便携版更新包包含重复的 LOLAssistant.exe".to_string());
+                return Err(crate::error::AppError::Updater(
+                    "便携版更新包包含重复的 LOLAssistant.exe".to_string(),
+                ));
             }
             found_exe = true;
             destination.join(PORTABLE_EXE)
         } else if relative == Path::new(PORTABLE_MARKER) {
             if found_marker {
-                return Err("便携版更新包包含重复的 portable.flag".to_string());
+                return Err(crate::error::AppError::Updater(
+                    "便携版更新包包含重复的 portable.flag".to_string(),
+                ));
             }
             found_marker = true;
             destination.join(PORTABLE_MARKER)
         } else {
-            return Err(format!("便携版更新包包含意外文件: {}", relative.display()));
+            return Err(crate::error::AppError::Updater(format!(
+                "便携版更新包包含意外文件: {}",
+                relative.display()
+            )));
         };
 
         payload_bytes = payload_bytes.saturating_add(entry.size());
         if payload_bytes > MAX_PAYLOAD_BYTES {
-            return Err("便携版更新包大小超出允许上限".to_string());
+            return Err(crate::error::AppError::Updater(
+                "便携版更新包大小超出允许上限".to_string(),
+            ));
         }
 
         let mut file = fs::File::create(output).map_err(|e| e.to_string())?;
         let copied = std::io::copy(&mut entry.take(MAX_PAYLOAD_BYTES + 1), &mut file)
             .map_err(|e| e.to_string())?;
         if copied > MAX_PAYLOAD_BYTES {
-            return Err("便携版更新包单文件超出允许上限".to_string());
+            return Err(crate::error::AppError::Updater(
+                "便携版更新包单文件超出允许上限".to_string(),
+            ));
         }
     }
 
     if !found_exe || !found_marker {
-        return Err("便携版更新包缺少 LOLAssistant.exe 或 portable.flag".to_string());
+        return Err(crate::error::AppError::Updater(
+            "便携版更新包缺少 LOLAssistant.exe 或 portable.flag".to_string(),
+        ));
     }
     Ok(())
 }
 
-fn stage_verified_archive(bytes: &[u8]) -> Result<StagedPortableUpdate, String> {
+fn stage_verified_archive(bytes: &[u8]) -> Result<StagedPortableUpdate, crate::error::AppError> {
     let work_dir = std::env::temp_dir().join(format!("{WORK_DIR_PREFIX}{}", Uuid::new_v4()));
     fs::create_dir(&work_dir).map_err(|e| e.to_string())?;
 
@@ -211,18 +241,23 @@ fn stage_verified_archive(bytes: &[u8]) -> Result<StagedPortableUpdate, String> 
 }
 
 /// 下载 + 暂存 + spawn helper（is_downloading 由调用方 update::download_and_install 管理）。
-pub async fn download_and_apply(app: &AppHandle) -> Result<(), String> {
+pub async fn download_and_apply(app: &AppHandle) -> Result<(), crate::error::AppError> {
     let staged = download_and_stage(app).await?;
     apply_staged(app, staged)
 }
 
-fn apply_staged(app: &AppHandle, staged: StagedPortableUpdate) -> Result<(), String> {
+fn apply_staged(
+    app: &AppHandle,
+    staged: StagedPortableUpdate,
+) -> Result<(), crate::error::AppError> {
     if !staged.helper_exe.is_file()
         || !staged.payload_exe.is_file()
         || !staged.payload_marker.is_file()
     {
         let _ = fs::remove_dir_all(&staged.work_dir);
-        return Err("便携版更新文件不完整".to_string());
+        return Err(crate::error::AppError::Updater(
+            "便携版更新文件不完整".to_string(),
+        ));
     }
 
     let target_exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -236,7 +271,7 @@ fn apply_staged(app: &AppHandle, staged: StagedPortableUpdate) -> Result<(), Str
 
     if let Err(error) = spawn_result {
         let _ = fs::remove_dir_all(&staged.work_dir);
-        return Err(error.to_string());
+        return Err(crate::error::AppError::Updater(error.to_string()));
     }
 
     let _ = app.emit(
@@ -257,7 +292,7 @@ pub fn run_helper_if_requested() -> bool {
     if let Err(error) = run_helper(&args) {
         let target = args.get(4).map(PathBuf::from);
         if let Some(target_exe) = target.as_deref() {
-            write_helper_error(target_exe, &error);
+            write_helper_error(target_exe, &error.to_string());
             let mut command = Command::new(target_exe);
             if let Some(work_dir) = args.get(5) {
                 command.env(CLEANUP_ENV, work_dir);
@@ -268,9 +303,11 @@ pub fn run_helper_if_requested() -> bool {
     true
 }
 
-fn run_helper(args: &[OsString]) -> Result<(), String> {
+fn run_helper(args: &[OsString]) -> Result<(), crate::error::AppError> {
     if args.len() != 6 {
-        return Err("便携版更新 helper 参数无效".to_string());
+        return Err(crate::error::AppError::Updater(
+            "便携版更新 helper 参数无效".to_string(),
+        ));
     }
     let parent_pid = args[2]
         .to_str()
@@ -290,7 +327,7 @@ fn run_helper(args: &[OsString]) -> Result<(), String> {
     Ok(())
 }
 
-fn replace_executable(source_exe: &Path, target_exe: &Path) -> Result<(), String> {
+fn replace_executable(source_exe: &Path, target_exe: &Path) -> Result<(), crate::error::AppError> {
     let target_dir = target_exe
         .parent()
         .ok_or_else(|| "便携版可执行文件无上级目录".to_string())?;
@@ -312,24 +349,24 @@ fn commit_executable<F>(
     target_exe: &Path,
     backup_exe: &Path,
     move_new: F,
-) -> Result<(), String>
+) -> Result<(), crate::error::AppError>
 where
     F: FnOnce(&Path, &Path) -> std::io::Result<()>,
 {
     fs::rename(target_exe, backup_exe).map_err(|e| e.to_string())?;
     if let Err(error) = move_new(new_exe, target_exe) {
         if let Err(rollback_error) = fs::rename(backup_exe, target_exe) {
-            return Err(format!(
+            return Err(crate::error::AppError::Updater(format!(
                 "便携版更新安装失败 ({error})，且恢复原 exe 失败 ({rollback_error})"
-            ));
+            )));
         }
-        return Err(error.to_string());
+        return Err(crate::error::AppError::Updater(error.to_string()));
     }
     Ok(())
 }
 
 /// 等待父进程退出（sysinfo 轮询，避免额外 windows crate）。
-fn wait_for_process_exit(process_id: u32) -> Result<(), String> {
+fn wait_for_process_exit(process_id: u32) -> Result<(), crate::error::AppError> {
     use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
 
     let pid = Pid::from_u32(process_id);
@@ -348,7 +385,7 @@ fn wait_for_process_exit(process_id: u32) -> Result<(), String> {
         }
         std::thread::sleep(Duration::from_millis(200));
     }
-    Err("等待主进程退出超时".to_string())
+    Err(crate::error::AppError::Updater("等待主进程退出超时".into()))
 }
 
 fn write_helper_error(target_exe: &Path, message: &str) {
@@ -415,7 +452,7 @@ pub(crate) fn test_commit_executable<F>(
     target_exe: &Path,
     backup_exe: &Path,
     move_new: F,
-) -> Result<(), String>
+) -> Result<(), crate::error::AppError>
 where
     F: FnOnce(&Path, &Path) -> std::io::Result<()>,
 {

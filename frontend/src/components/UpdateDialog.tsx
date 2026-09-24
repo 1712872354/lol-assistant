@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Download, ExternalLink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatReleaseNotes, useUpdateStore } from "@/stores/updateStore";
@@ -13,6 +13,7 @@ export function UpdateDialog() {
   const quitHint = useUpdateStore((s) => s.quitHint);
   const setDialogOpen = useUpdateStore((s) => s.setDialogOpen);
   const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // done/error 后允许关闭；下载中才锁定
   const stage = progress?.stage;
@@ -27,14 +28,54 @@ export function UpdateDialog() {
     return () => window.removeEventListener("keydown", onKey);
   }, [canClose, setDialogOpen]);
 
+  // 打开时聚焦面板 + 焦点陷阱（Tab 循环）；关闭时焦点返还触发元素
+  useEffect(() => {
+    if (!open || !info?.hasUpdate) return;
+    const prev = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    panel?.focus();
+
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !panel) return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === panel)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onTab);
+    return () => {
+      window.removeEventListener("keydown", onTab);
+      prev?.focus();
+    };
+  }, [open, info?.hasUpdate]);
+
   if (!open || !info?.hasUpdate) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4">
-      <div className="w-full max-w-md rounded-xl border bg-card p-5 shadow-xl">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="update-dialog-title"
+        tabIndex={-1}
+        className="w-full max-w-md rounded-xl border bg-card p-5 shadow-xl outline-none"
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold">发现新版本 {info.version}</h2>
+            <h2 id="update-dialog-title" className="text-sm font-semibold">
+              发现新版本 {info.version}
+            </h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               当前 {info.currentVersion || "dev"}
               {info.pubDate ? ` · 发布于 ${info.pubDate.slice(0, 10)}` : ""}

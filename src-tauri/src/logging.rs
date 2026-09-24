@@ -59,7 +59,8 @@ fn prune_old(dir: &Path, keep_days: u64) {
 pub fn write_line(level: &str, msg: &str) {
     if let Ok(mut guard) = LOG_FILE.lock() {
         if let Some(f) = guard.as_mut() {
-            let _ = writeln!(f, "[{}] {}", level, msg);
+            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            let _ = writeln!(f, "[{ts} {level}] {msg}");
             let _ = f.flush();
         }
     }

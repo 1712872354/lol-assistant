@@ -80,16 +80,10 @@ struct SgpParticipant {
     game_ended_in_early_surrender: bool,
     #[serde(default, rename = "teamEarlySurrendered")]
     team_early_surrendered: bool,
-    #[serde(default, rename = "totalMinionsKilled")]
-    total_minions_killed: i32,
-    #[serde(default, rename = "neutralMinionsKilled")]
-    neutral_minions_killed: i32,
     #[serde(default, rename = "goldEarned")]
     gold_earned: i32,
     #[serde(default, rename = "totalDamageDealtToChampions")]
     total_damage_dealt_to_champions: i32,
-    #[serde(default, rename = "totalHeal")]
-    total_heal: i32,
     #[serde(default)]
     perks: SgpPerks,
 }
@@ -139,13 +133,17 @@ struct SgpGameSummary {
 
 /* ─── 解析入口 ─────────────────────────────────────────────────── */
 
-pub fn parse_sgp_summaries(data: &[u8], self_puuid: &str) -> Result<Vec<MatchSummary>, String> {
+pub fn parse_sgp_summaries(
+    data: &[u8],
+    self_puuid: &str,
+) -> Result<Vec<MatchSummary>, crate::error::AppError> {
     #[derive(Deserialize)]
     struct Wrap {
         #[serde(default)]
         games: Vec<SgpGameSummary>,
     }
-    let wrap: Wrap = serde_json::from_slice(data).map_err(|e| format!("解析战绩列表失败: {e}"))?;
+    let wrap: Wrap = serde_json::from_slice(data)
+        .map_err(|e| crate::error::AppError::Parse(format!("解析战绩列表失败: {e}")))?;
 
     let mut summaries = Vec::with_capacity(wrap.games.len());
     for sg in &wrap.games {
@@ -196,13 +194,10 @@ fn adapt_sgp_game(sj: &SgpGameJson) -> super::lcu_match::LcuGame {
                 item5: sp.item5,
                 item6: sp.item6,
                 perk0: sp.perk0(),
-                total_minions_killed: sp.total_minions_killed,
-                neutral_minions_killed: sp.neutral_minions_killed,
                 gold_earned: sp.gold_earned,
                 total_damage_dealt_to_champions: sp.total_damage_dealt_to_champions,
-                total_heal: sp.total_heal,
-                game_ended_in_early_surrender: sp.game_ended_in_early_surrender
-                    || sp.team_early_surrendered,
+                // 忠实映射来源字段；重赛判定统一走 lcu_match::is_remake，此处不再折算
+                game_ended_in_early_surrender: sp.game_ended_in_early_surrender,
                 team_early_surrendered: sp.team_early_surrendered,
                 subteam_placement: sp.subteam_placement,
                 highest_achieved_season_tier: String::new(),
@@ -282,7 +277,6 @@ mod tests {
         assert_eq!(s.items.len(), 7);
         assert_eq!(s.items[0], 10);
         assert_eq!(s.items[6], 3340);
-        assert_eq!(s.cs, 220);
         assert_eq!(s.gold, 14200);
         assert_eq!(s.total_damage, 18500);
         assert!(!s.queue_name.is_empty());

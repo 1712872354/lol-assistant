@@ -54,7 +54,6 @@ git push origin main --tags
 ## 3. 更新端点
 
 - 官方：`https://github.com/1712872354/lol-assistant/releases/latest/download/latest.json`
-- 镜像：`https://ghp.ci/https://github.com/1712872354/lol-assistant/releases/latest/download/latest.json`
 
 ## 4. 本地构建
 
