@@ -237,6 +237,38 @@ jobs:
           [IO.File]::WriteAllText("release-assets/latest.json", $json, $utf8NoBom)
           Get-Content release-assets/latest.json
 
+          # raw 加速变体：清单内制品 URL 改走 raw.githubusercontent.com（dist 分支）
+          $rawBase = "https://raw.githubusercontent.com/$owner/$repo/dist"
+          $latest.platforms."windows-x86_64".url = "$rawBase/$setupName"
+          $latest.platforms."windows-x86_64-portable".url = "$rawBase/$portName"
+          $rawJson = $latest | ConvertTo-Json -Depth 10
+          New-Item -ItemType Directory -Force -Path "dist-publish" | Out-Null
+          [IO.File]::WriteAllText("dist-publish/latest.json", $rawJson, $utf8NoBom)
+          Write-Host "dist latest.json (raw variant) generated"
+
+      - name: Publish dist branch (raw.githubusercontent.com accelerator)
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          # 独立临时仓发布孤儿单提交的 dist 分支（仅保留当前版本资产，不累积历史）
+          $tmp = Join-Path $env:RUNNER_TEMP "dist-publish"
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          Copy-Item "release-assets/LOLAssistant-Setup-$ver.exe" $tmp
+          Copy-Item "release-assets/LOLAssistant-Setup-$ver.exe.sig" $tmp
+          Copy-Item "release-assets/LOLAssistant-Portable-$ver.zip" $tmp
+          Copy-Item "release-assets/LOLAssistant-Portable-$ver.zip.sig" $tmp
+          Copy-Item "release-assets/SHA256SUMS.txt" $tmp
+          Copy-Item "dist-publish/latest.json" $tmp
+          Set-Location $tmp
+          git init -b dist | Out-Null
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "dist: v$ver" | Out-Null
+          $repo = "${{ github.repository }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$repo.git" dist:dist
+          Write-Host "dist branch published (raw accelerator source)"
+
       - name: Extract changelog notes
         shell: pwsh
         run: |

@@ -51,9 +51,16 @@ git push origin main --tags
 | `latest.json` | `tauri-plugin-updater` 清单（双 endpoint 拉取） |
 | `SHA256SUMS.txt` | 人工核对哈希（更新链路已改 minisign，不再依赖正文 SHA256） |
 
-## 3. 更新端点
+## 3. 更新链（raw.githubusercontent.com 加速）
 
-- 官方：`https://github.com/1712872354/lol-assistant/releases/latest/download/latest.json`
+- **加速源（优先）**：`https://raw.githubusercontent.com/1712872354/lol-assistant/dist/latest.json`
+  - 发布工作流会把 `latest.json` + 制品（exe/zip + .sig + SHA256SUMS）发布到 `dist` 分支（孤儿单提交覆盖，不累积历史）；
+    清单内制品 URL 也走 raw，整条更新链在 raw 可达时均为官方域 CDN 加速
+- **官方回退**：`https://github.com/1712872354/lol-assistant/releases/latest/download/latest.json`
+  - raw 不可达时自动回退 GitHub Release（清单内制品 URL 走 releases/download）
+- **端点只允许 GitHub 官方域**（`github.com` / `raw.githubusercontent.com`），更新器测试有白名单断言把关；
+  制品仍经 minisign 验签 + 版本单调性校验（拒绝降级），与下载源无关
+- 注意：端点表编译进程序，**本变更自下个版本起生效**
 
 ## 4. 本地构建
 

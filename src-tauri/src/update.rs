@@ -398,19 +398,40 @@ mod tests {
         assert_eq!(json.get("releaseUrl").unwrap(), "r");
     }
 
-    /// T2.1 回归：更新元数据端点不得走第三方镜像（ghp.ci 等），只信任 GitHub 官方源。
+    /// T2.1/T5.5 回归：更新端点只允许 GitHub 官方域，且必须含 raw.githubusercontent.com 加速源。
     #[test]
-    fn update_endpoints_exclude_third_party_mirrors() {
+    fn update_endpoints_official_only_with_raw_accel() {
         let conf = include_str!("../tauri.conf.json");
         assert!(
-            !conf.contains("ghp.ci"),
-            "updater endpoints 不得包含第三方镜像 ghp.ci"
+            !conf.contains("ghp.ci") && !conf.contains("gh-proxy"),
+            "updater endpoints 不得包含第三方镜像"
+        );
+        let v: serde_json::Value = serde_json::from_str(conf).unwrap();
+        let eps = v["plugins"]["updater"]["endpoints"].as_array().unwrap();
+        assert!(!eps.is_empty());
+        for ep in eps {
+            let u = ep.as_str().unwrap();
+            let host = u
+                .split_once("https://")
+                .map(|(_, rest)| rest.split('/').next().unwrap_or(""))
+                .unwrap_or("");
+            assert!(
+                host == "raw.githubusercontent.com" || host == "github.com",
+                "端点必须为 GitHub 官方域: {u}"
+            );
+        }
+        assert!(
+            eps.iter()
+                .any(|e| e.as_str().unwrap_or("").contains("raw.githubusercontent.com")),
+            "必须包含 raw.githubusercontent.com 加速源"
         );
         assert!(
-            conf.contains(
-                "https://github.com/1712872354/lol-assistant/releases/latest/download/latest.json"
-            ),
-            "必须保留 GitHub 官方 latest.json 端点"
+            eps.iter().any(|e| {
+                e.as_str()
+                    .unwrap_or("")
+                    .contains("releases/latest/download/latest.json")
+            }),
+            "必须保留 GitHub 官方 latest.json 回退端点"
         );
     }
 
