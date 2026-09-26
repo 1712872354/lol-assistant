@@ -26,15 +26,13 @@ export interface AppConfig {
 
 export const DEFAULT_CONFIG: AppConfig = {
   schemaVersion: 1,
-  theme: "system",
+  theme: "dark",
   pageSize: 20,
   careerLimit: 20,
   sgpEnabled: true,
   closeToTray: true,
   clientPath: "",
 };
-
-export type ViewKey = "history" | "gameinfo" | "settings";
 
 /** 对局信息页：筛选视图 */
 export type GameinfoSideFilter = "ally" | "all" | "enemy";

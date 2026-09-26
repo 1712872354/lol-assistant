@@ -1,6 +1,7 @@
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import type { ConnState } from "@/lib/types";
 import { phaseLabelCN } from "@/lib/phase";
+import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
 import { useGameinfoStore } from "@/stores/gameinfoStore";
 
@@ -11,7 +12,7 @@ const STATE_UI: Record<ConnState, { dot: string; text: string }> = {
 };
 
 /**
- * 标题栏状态徽章：已连接时显示英雄联盟客户端状态（大厅中/房间内/游戏中…），
+ * 标题栏状态徽章：已连接时显示英雄联盟客户端状态（大厅中/房间中/游戏中…）。
  * 召唤师名收进 title 提示；未连接/未登录显示连接态文案。
  */
 export function ConnBadge() {
@@ -25,15 +26,13 @@ export function ConnBadge() {
       : stateText;
 
   return (
-    <span
+    <Badge
+      variant="secondary"
       title={title}
-      className={cn(
-        "inline-flex max-w-[240px] items-center gap-1.5 rounded-full border border-border",
-        "bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground",
-      )}
+      className="max-w-[240px] gap-1.5 rounded-full border-border px-2 py-0.5 text-[11px] font-normal text-muted-foreground"
     >
       <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", ui.dot)} />
       <span className="truncate">{stateText}</span>
-    </span>
+    </Badge>
   );
 }

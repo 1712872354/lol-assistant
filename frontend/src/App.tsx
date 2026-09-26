@@ -1,11 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { RouterProvider } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { KeepAlive } from "@/components/layout/KeepAlive";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { TitleBar } from "@/components/layout/TitleBar";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { UpdateDialog } from "@/components/UpdateDialog";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { router } from "@/app/router";
 import { callApp, onAppEvent } from "@/lib/backend";
 import type { AppConfig, ConnStatus } from "@/lib/types";
 import { applyTheme, useAppStore } from "@/stores/appStore";
@@ -53,14 +52,8 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={200}>
         <ErrorBoundary>
-          <div className="flex h-screen flex-col overflow-hidden">
-            <TitleBar />
-            <div className="flex min-h-0 flex-1">
-              <Sidebar />
-              <KeepAlive />
-            </div>
-            <UpdateDialog />
-          </div>
+          <RouterProvider router={router} />
+          <UpdateDialog />
         </ErrorBoundary>
       </TooltipProvider>
     </QueryClientProvider>

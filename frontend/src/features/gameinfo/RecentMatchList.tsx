@@ -17,10 +17,10 @@ export function RecentMatchList({ recent, uniformQueue, hiddenCareer }: Props) {
           <div
             key={i}
             className={cn(
-              "flex items-center gap-2 rounded-lg border-l-[3px] px-2 py-1",
+              "flex items-center gap-2 rounded-md border-l-[3px] px-2 py-1",
               r.win
-                ? "border-l-win-bar bg-team-win-bg/55"
-                : "border-l-loss-bar bg-team-loss-bg/55",
+                ? "border-l-win-bar bg-win-bg/25"
+                : "border-l-loss-bar bg-loss-bg/25",
             )}
           >
             <AssetImg kind="champion" id={r.championId} size={28} className="rounded-md" />

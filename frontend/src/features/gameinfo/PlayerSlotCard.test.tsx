@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/AssetImg", () => ({
@@ -30,7 +31,9 @@ const slot: GameinfoPlayerSlot = {
 describe("PlayerSlotCard a11y", () => {
   it("不得嵌套交互元素（复制按钮不得位于外层 button 内）", () => {
     const { container } = render(
-      <PlayerSlotCard slot={slot} teamKey="ally" offline={false} />,
+      <MemoryRouter>
+        <PlayerSlotCard slot={slot} teamKey="ally" offline={false} />
+      </MemoryRouter>,
     );
 
     // button 内嵌 button / role=button 均为无效结构

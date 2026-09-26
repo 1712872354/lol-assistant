@@ -5,14 +5,12 @@ import {
   type AppConfig,
   type ConnStatus,
   type ThemeMode,
-  type ViewKey,
 } from "@/lib/types";
 
 function resolveTheme(mode: ThemeMode): "light" | "dark" {
-  if (mode !== "system") return mode;
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  // 电竞工具暗色优先：system 不再跟随 OS 浅色，仅显式 light 才亮色
+  if (mode === "light") return "light";
+  return "dark";
 }
 
 /** 主题经 data-theme 属性挂 html（shadcn CSS 变量 + 深色自定义 variant） */
@@ -21,9 +19,6 @@ export function applyTheme(mode: ThemeMode): void {
 }
 
 interface AppState {
-  /** KeepAlive 双页切换：仅改此值，组件不卸载 */
-  activeView: ViewKey;
-  setActiveView: (v: ViewKey) => void;
   conn: ConnStatus;
   setConn: (c: ConnStatus) => void;
   config: AppConfig;
@@ -35,8 +30,6 @@ interface AppState {
 let configWriteChain: Promise<void> = Promise.resolve();
 
 export const useAppStore = create<AppState>((set) => ({
-  activeView: "history",
-  setActiveView: (activeView) => set({ activeView }),
   conn: { state: "disconnected" },
   setConn: (conn) => set({ conn }),
   config: DEFAULT_CONFIG,

@@ -13,8 +13,7 @@ import { buildRankedMap, fmtK, lookupRanked, normId } from "./format";
 
 import type { Tone } from "@/lib/tone";
 import { TONE_FILL, TONE_HEADER, TONE_TEXT } from "./badges";
-import { ColumnHeader } from "./ColumnHeader";
-import { PlayerRowView } from "./PlayerRow";
+import { PlayerDataTable } from "./PlayerDataTable";
 
 /**
  * 右侧对局明细：
@@ -172,8 +171,6 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ColumnHeader />
-
       <div className="flex min-h-0 flex-1 flex-col">
         {detail.teams.map((team, ti) => {
           const tone = toneOf(team.win);
@@ -192,40 +189,44 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
             >
               <div
                 className={cn(
-                  "flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2",
+                  "flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-border/50 px-3 py-1.5",
                   TONE_HEADER[tone],
                 )}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="text-[13px] font-semibold">{result}</span>
-                <span className="text-[12px] font-medium opacity-90">{side}</span>
-                <span className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-0.5 text-[12px]">
-                  <span className="tnum font-bold" title="队伍 K/D/A">
-                    {team.kills}/{team.deaths}/{team.assists}
+                <span className="text-[13px] font-semibold tracking-wide">{result}</span>
+                <span className="rounded-sm bg-background/40 px-1.5 py-0.5 text-[11px] font-medium">
+                  {side}
+                </span>
+                <span className="ml-auto flex flex-wrap items-center justify-end gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+                  <span className="stat-num text-foreground/90" title="队伍 K/D/A">
+                    {team.kills}
+                    <span className="mx-0.5 text-muted-foreground/40">/</span>
+                    {team.deaths}
+                    <span className="mx-0.5 text-muted-foreground/40">/</span>
+                    {team.assists}
                   </span>
-                  <span className="tnum opacity-80" title="队伍经济">
+                  <span className="opacity-30">·</span>
+                  <span className="tnum" title="队伍经济">
                     {fmtK(team.gold)}
                   </span>
-                  <span className="tnum opacity-70" title="对局时长">
+                  <span className="opacity-30">·</span>
+                  <span className="tnum" title="对局时长">
                     {detail.duration}
                   </span>
                 </span>
               </div>
               <div className="flex min-h-0 flex-1 flex-col">
-                {team.players.map((p) => (
-                  <PlayerRowView
-                    key={p.participantId}
-                    p={p}
-                    ranked={findRanked(p)}
-                    tone={tone}
-                    maxDamage={peaks.damage}
-                    maxGold={peaks.gold}
-                    badge={badges.get(p.participantId)}
-                  />
-                ))}
-                {Array.from({ length: Math.max(0, 5 - team.players.length) }).map((_, i) => (
-                  <div key={`pad-${i}`} className="min-h-0 flex-1" aria-hidden />
-                ))}
+                <PlayerDataTable
+                  data={team.players.map((p) => ({
+                    p,
+                    ranked: findRanked(p),
+                    badge: badges.get(p.participantId),
+                    tone,
+                    maxDamage: peaks.damage,
+                    maxGold: peaks.gold,
+                  }))}
+                />
               </div>
             </div>
           );
@@ -233,21 +234,21 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
       </div>
 
       {/* 底部汇总：时间拉开间距，胜负色区分双方数值 */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-4 py-2 text-[12px] text-muted-foreground">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-border/60 bg-muted/25 px-4 py-1.5 text-[11px] text-muted-foreground">
         <span className="tnum">{detail.time}</span>
         <span className="opacity-30">·</span>
         <span className="tnum">用时 {detail.durationMin}</span>
         <span className="opacity-30">·</span>
         <span className="tnum whitespace-nowrap">
-          击杀 <span className={selfTone}>{selfTeam.kills}</span>
-          <span className="mx-0.5 opacity-50">/</span>
-          <span className={otherTone}>{otherSum.kills}</span>
+          击杀 <span className={cn("font-semibold", selfTone)}>{selfTeam.kills}</span>
+          <span className="mx-0.5 opacity-40">/</span>
+          <span className={cn("font-semibold", otherTone)}>{otherSum.kills}</span>
         </span>
         <span className="opacity-30">·</span>
         <span className="tnum whitespace-nowrap">
-          金钱 <span className={selfTone}>{fmtK(selfTeam.gold)}</span>
-          <span className="mx-0.5 opacity-50">/</span>
-          <span className={otherTone}>{fmtK(otherSum.gold)}</span>
+          金钱 <span className={cn("font-semibold", selfTone)}>{fmtK(selfTeam.gold)}</span>
+          <span className="mx-0.5 opacity-40">/</span>
+          <span className={cn("font-semibold", otherTone)}>{fmtK(otherSum.gold)}</span>
         </span>
       </div>
     </div>

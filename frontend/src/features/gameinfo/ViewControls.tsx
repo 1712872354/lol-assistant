@@ -1,6 +1,12 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { GameinfoSideFilter } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useGameinfoStore } from "@/stores/gameinfoStore";
@@ -16,40 +22,6 @@ const SIDE_FILTERS: Array<{ value: GameinfoSideFilter; label: string }> = [
   { value: "all", label: "全部" },
   { value: "enemy", label: "敌方" },
 ];
-
-/** 下拉菜单项：选中打勾；当前对局所属类型带「当前」小标 */
-function MenuItem({
-  value,
-  label,
-  active,
-  current,
-  onPick,
-}: {
-  value: QueueFilterKey;
-  label: string;
-  active: boolean;
-  current?: boolean;
-  onPick: (v: QueueFilterKey) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onPick(value)}
-      className={cn(
-        "menu-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-accent",
-        active ? "font-semibold text-selected-fg" : "text-foreground",
-      )}
-    >
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {current ? (
-        <span className="shrink-0 rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
-          当前
-        </span>
-      ) : null}
-      {active ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-    </button>
-  );
-}
 
 /** 阵营分段：滑块指示器 + 按钮微缩放 */
 export function SideFilterControl() {
@@ -83,7 +55,7 @@ export function SideFilterControl() {
             onClick={() => setSideFilter(f.value)}
             className={cn(
               "relative z-[1] h-7 flex-1 rounded-md px-2.5 text-xs transition-[color,transform] duration-150 active:scale-[0.96]",
-              on ? "font-semibold text-white" : "text-foreground hover:bg-card/80",
+              on ? "font-semibold text-primary-foreground" : "text-foreground hover:bg-card/80",
             )}
           >
             {f.label}
@@ -94,7 +66,7 @@ export function SideFilterControl() {
   );
 }
 
-/** 对局类型下拉（近况口径）：箭头旋转 + 弹层淡入 */
+/** 对局类型下拉（近况口径）：官方 DropdownMenu */
 export function QueueTypeSelect({ disabled }: { disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const queueKey = useGameinfoStore((s) => s.queueKey);
@@ -104,13 +76,12 @@ export function QueueTypeSelect({ disabled }: { disabled?: boolean }) {
   const currentKey = queueTypeKeyOf(queueId);
 
   const pick = (key: QueueFilterKey) => {
-    setOpen(false);
     if (key !== queueKey) setQueueKey(key);
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
         <button
           type="button"
           disabled={disabled}
@@ -132,28 +103,45 @@ export function QueueTypeSelect({ disabled }: { disabled?: boolean }) {
             )}
           />
         </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 p-1">
-        <MenuItem
-          value="follow"
-          label={`跟随对局（${queueLabel || "当前对局"}）`}
-          active={queueKey === "follow"}
-          onPick={pick}
-        />
-        <MenuItem value="all" label="全部对局" active={queueKey === "all"} onPick={pick} />
-        <div className="my-1 h-px bg-border" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuItem
+          onClick={() => pick("follow")}
+          className={cn("justify-between text-xs", queueKey === "follow" && "font-semibold text-selected-fg")}
+        >
+          <span className="truncate">跟随对局（{queueLabel || "当前对局"}）</span>
+          {queueKey === "follow" ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => pick("all")}
+          className={cn("justify-between text-xs", queueKey === "all" && "font-semibold text-selected-fg")}
+        >
+          <span>全部对局</span>
+          {queueKey === "all" ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         {QUEUE_TYPE_OPTIONS.map((o) => (
-          <MenuItem
+          <DropdownMenuItem
             key={o.key}
-            value={o.key}
-            label={o.label}
-            active={queueKey === o.key}
-            current={currentKey === o.key}
-            onPick={pick}
-          />
+            onClick={() => pick(o.key)}
+            className={cn(
+              "justify-between text-xs",
+              queueKey === o.key && "font-semibold text-selected-fg",
+            )}
+          >
+            <span className="truncate">{o.label}</span>
+            <span className="flex shrink-0 items-center gap-1">
+              {currentKey === o.key ? (
+                <span className="rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
+                  当前
+                </span>
+              ) : null}
+              {queueKey === o.key ? <Check className="h-3.5 w-3.5" /> : null}
+            </span>
+          </DropdownMenuItem>
         ))}
-      </PopoverContent>
-    </Popover>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

@@ -112,11 +112,11 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
 
   return (
     <>
-      <div className="shrink-0 border-b px-3 py-2.5">
+      <div className="shrink-0 border-b border-border/60 bg-muted/20 px-3 py-2">
         <div className="flex items-center justify-between gap-1">
           <div className="flex min-w-0 items-center gap-1.5">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" />
-            <span className="truncate text-[13px] font-semibold">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-gold" />
+            <span className="truncate text-[12.5px] font-semibold">
               {tab.name.split("#")[0] || tab.name}
             </span>
           </div>
@@ -134,12 +134,12 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
             <RotateCcw className={cn("h-3.5 w-3.5 transition-transform", q.isFetching && "animate-spin")} />
           </Button>
         </div>
-        {/* 列表头：段位英式（GOLD IV 45，有段位才琥珀色）· 第 x 页 */}
-        <div className="tnum mt-1 pl-3.5 text-[11px] leading-snug text-muted-foreground">
+        {/* 列表头：段位 + 页码 */}
+        <div className="tnum mt-1 pl-3.5 text-[11px] leading-none text-muted-foreground">
           <span
             className={cn(
               "font-medium",
-              selfRankLabel ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground",
+              selfRankLabel ? "text-brand-gold" : "text-muted-foreground",
             )}
           >
             {selfRankLabel || UNRANKED}
@@ -188,7 +188,7 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
         )}
       </div>
 
-      <div className="flex shrink-0 items-center justify-center gap-1.5 border-t px-2 py-2">
+      <div className="flex shrink-0 items-center justify-center gap-1.5 border-t border-border/60 bg-muted/20 px-2 py-1.5">
         <Button
           variant="outline"
           size="sm"

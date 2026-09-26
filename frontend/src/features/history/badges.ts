@@ -1,24 +1,22 @@
 import type { Tone } from "@/lib/tone";
 
-/** 行内文字色档 */
+/** 行内文字色档（深底下用高对比语义色） */
 export const TONE_TEXT: Record<Tone, string> = {
-  win: "text-team-win-fg",
-  loss: "text-team-loss-fg",
+  win: "text-win-fg",
+  loss: "text-loss-fg",
   remake: "text-muted-foreground",
 };
 
-/** 队列头底色档 */
+/** 队伍头带：记分牌条——深面 + 左侧 3px 色轨（禁止大色块铺满） */
 export const TONE_HEADER: Record<Tone, string> = {
-  win: "bg-team-win-bg text-team-win-fg",
-  loss: "bg-team-loss-bg text-team-loss-fg",
-  remake: "bg-muted text-muted-foreground",
+  win: "border-l-[3px] border-l-win-bar bg-win-bg/25 text-win-fg",
+  loss: "border-l-[3px] border-l-loss-bar bg-loss-bg/25 text-loss-fg",
+  remake: "border-l-[3px] border-l-remake-bar bg-remake-bg/30 text-muted-foreground",
 };
 
-/** 相对条（已上移 lib/RESULT_FILL，此处保留名称兼容） */
-
-/** 相对条底色（队伍汇总行背景条） */
+/** 队伍区块底色：近中性，胜负只靠表头色轨与文字 */
 export const TONE_FILL: Record<Tone, string> = {
-  win: "bg-team-win-bg/20",
-  loss: "bg-team-loss-bg/20",
-  remake: "bg-muted/30",
+  win: "bg-transparent",
+  loss: "bg-transparent",
+  remake: "bg-transparent",
 };

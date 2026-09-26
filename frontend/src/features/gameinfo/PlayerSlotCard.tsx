@@ -1,12 +1,12 @@
 import { ChevronRight, Copy } from "lucide-react";
 import type { MouseEvent } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { AssetImg } from "@/lib/AssetImg";
 import { UNRANKED } from "@/lib/rank";
 import { toSummonerResult } from "@/lib/summoner";
 import type { GameinfoPlayerSlot, GameinfoRecentMatch } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { useAppStore } from "@/stores/appStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import { splitRank, threatTone } from "./format";
 import { RankChip } from "./RankChip";
@@ -26,7 +26,7 @@ interface Props {
 export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
   const ally = teamKey === "ally";
   const openSummoner = useHistoryStore((s) => s.openSummoner);
-  const setActiveView = useAppStore((s) => s.setActiveView);
+  const navigate = useNavigate();
 
   if (!slot.filled) {
     const caption = offline
@@ -75,18 +75,18 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
       summonerId: slot.summonerId ?? "",
     });
     openSummoner(s, slot.isSelf);
-    setActiveView("history");
+    navigate("/history");
   };
 
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden rounded-[14px] border shadow-sm",
+        "flex h-full min-h-0 flex-col overflow-hidden rounded-lg border",
         slot.isSelf
-          ? "border-self-card-border bg-self-card-bg ring-1 ring-self-card-border/35"
+          ? "border-self-card-border bg-self-card-bg shadow-[inset_3px_0_0_0_var(--brand-gold)]"
           : ally
-            ? "border-ally-border/50 bg-card"
-            : "border-enemy-border/50 bg-card",
+            ? "border-ally-border/55 bg-card"
+            : "border-enemy-border/55 bg-card",
       )}
     >
       {/* 头部：点击身份区即可进战绩页（复制按钮绝对定位为兄弟节点，避免嵌套交互） */}
@@ -135,10 +135,10 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
             <div className="flex items-baseline gap-1">
               <span
                 className={cn(
-                  "tnum text-[22px] font-bold leading-none",
+                  "stat-num text-[22px] leading-none",
                   wrTone === "good" && "text-good-fg",
-                  wrTone === "bad" && "text-destructive",
-                  wrTone === "mid" && "text-amber-600 dark:text-amber-400",
+                  wrTone === "bad" && "text-loss-fg",
+                  wrTone === "mid" && "text-amber-300",
                 )}
               >
                 {winRate.toFixed(1)}%
@@ -156,9 +156,9 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
             <div className="flex items-baseline justify-end gap-1">
               <span
                 className={cn(
-                  "tnum text-xl font-bold leading-none",
+                  "stat-num text-xl leading-none",
                   kdaTone === "good" && "text-good-fg",
-                  kdaTone === "bad" && "text-destructive",
+                  kdaTone === "bad" && "text-loss-fg",
                 )}
               >
                 {avgKda.toFixed(2)}
@@ -171,12 +171,12 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
 
         <div className="flex items-center gap-1.5">
           {slot.hiddenCareer ? (
-            <span className="rounded-md bg-career-bg px-1.5 py-0.5 text-[10px] font-semibold text-white">
+            <span className="rounded border border-border/70 bg-career-bg px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
               生涯隐藏
             </span>
           ) : null}
           <span
-            className="rounded-md bg-rating-bg px-1.5 py-0.5 text-[10px] font-semibold text-white"
+            className="rounded bg-rating-bg px-1.5 py-0.5 text-[10px] font-semibold text-brand-gold"
             title="综合评分 = 胜率/20 + 近况均 KDA"
           >
             综合 {(slot.playerScore ?? 0).toFixed(1)}
