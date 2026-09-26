@@ -1,0 +1,15 @@
+{
+  "version": "1.2.0",
+  "notes": "### 界面\r\n\r\n- **暗色电竞风格全面改版**：深蓝黑底 + Hextech 金强调，胜青绿/负绯红，我方冷蓝/敌方暖红；默认暗色优先，设置可切亮色\r\n- **战绩页**：列表左色轨扫读、KDA/伤害/金钱/评分数字加大，相对条降噪；本人金边，MVP 金标 / ACE 银标；队头记分牌式呈现\r\n- **对局页**：侦察卡以胜率/均 KDA 大数字为核心，自卡金轨，段位与评分统一金/冷蓝；近况行仅保留胜负色轨\r\n- **应用壳**：侧栏 / 标题栏 / 滚动条随暗色主题适配；组件库迁移至 shadcn（Sidebar / Table / Dialog 等）\r\n\r\n### 修复\r\n\r\n- **设置页布局挤压**：窄列竖排标签、开关被裁切——容器补全宽度，改为「左文案 + 右控件」行式布局\r\n- **浅色主题滚动条**：不再出现硬编码黑滚动条，随主题切换\r\n- **顶部刷新范围**：只刷新当前页（战绩 / 对局），设置页禁用刷新\r\n\r\n---",
+  "pub_date": "2026-09-26T15:07:57Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTalg4QWhJS08ya1FWMHVsQTFoT3ozWWlWdzZFcDJaU29nbEhzeDZuY0txWnFaMEwybjNGL0FGZTVZWlp3V2w5QUlsYXBJRnl3ejlQNjRQaHo3TURVdGRNWXVwa1l0L0E0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNDM1Mjc1CWZpbGU6TE9M5Yqp5omLXzEuMi4wX3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjIuMApEQzVvcWFqNFd4V1ZxL1EwaHBRVlNkQVZHNDBtQmhjc25HbzE1MnJtUU1xWUUwS21OVDNmLzlyem5DNk9ZK1A1bzIxRkxLWEtQa0dhVC9jTWZ0S1ZBUT09Cg==",
+      "url": "https://raw.githubusercontent.com/1712872354/lol-assistant/dist/LOLAssistant-Setup-1.2.0.exe"
+    },
+    "windows-x86_64-portable": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTalg4QWhJS08ya1dhWlFJell5TS83K2tySWhiQVkzeHNveHltYUtHNHlydTlLRzJ0akI1VytiZExOWHJ4VHhZOFF6RDlpaFgzS1UzWW5wOVQrQ2Y0VkdKWjMvc0ZpSEFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNDM1Mjc2CWZpbGU6TE9MQXNzaXN0YW50LVBvcnRhYmxlLTEuMi4wLnppcApKKzkxSlV5djRFdTBkQndvaGFGSzdJUFphbEwxVHpwQ0p1NU0wUE9nL0dHTGZ1UDlmRW9VV3lDL29Kb05oQklRbXVxVjRqY2dCaEtUbXhnMEJsZDhBdz09Cg==",
+      "url": "https://raw.githubusercontent.com/1712872354/lol-assistant/dist/LOLAssistant-Portable-1.2.0.zip"
+    }
+  }
+}
