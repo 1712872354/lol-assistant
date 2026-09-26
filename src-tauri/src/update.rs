@@ -421,8 +421,10 @@ mod tests {
             );
         }
         assert!(
-            eps.iter()
-                .any(|e| e.as_str().unwrap_or("").contains("raw.githubusercontent.com")),
+            eps.iter().any(|e| e
+                .as_str()
+                .unwrap_or("")
+                .contains("raw.githubusercontent.com")),
             "必须包含 raw.githubusercontent.com 加速源"
         );
         assert!(
