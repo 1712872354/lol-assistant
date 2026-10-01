@@ -5,18 +5,24 @@
 
 /* ── 暗色电竞工具风（OP.GG × Hextech × 转播记分牌） ─────────────────
    原则：深蓝黑底、金作主强调、胜负青绿/绯红仅语义、我方冷蓝/敌方暖红
-   数字用 tnum 加大字重；相对条降噪；禁止大面积色底铺满 */
+   数字用 tnum 加大字重；相对条降噪；禁止大面积色底铺满
+   美感：微妙渐变增加纵深、精致阴影、细腻边框光感 */
 :root {
   --brand-gold: #c8aa6e;
+  --brand-gold-bright: #e2c98a;
+  --brand-gold-dim: #9a7d4e;
   --brand-gold-soft: rgba(200, 170, 110, 0.14);
+  --brand-gold-glow: rgba(200, 170, 110, 0.25);
   --radius: 0.5rem;
 
   /* 默认即暗色基准（桌面电竞工具夜间友好） */
-  --background: #0a0d14;
+  --background: #080b12;
+  --background-subtle: #0c1018;
   --foreground: #e8ecf4;
-  --card: #121824;
+  --card: #111825;
+  --card-hover: #151d2c;
   --card-foreground: #e8ecf4;
-  --popover: #151c2a;
+  --popover: #141b28;
   --popover-foreground: #e8ecf4;
   --primary: #c8aa6e;
   --primary-foreground: #14100a;
@@ -28,17 +34,19 @@
   --accent-foreground: #e8ecf4;
   --destructive: #e06b75;
   --destructive-foreground: #ffffff;
-  --border: #243044;
+  --border: #1e2a3e;
+  --border-subtle: #182234;
+  --border-bright: #2a3a52;
   --input: #243044;
   --ring: #c8aa6e;
 
-  --sidebar: #0f141e;
+  --sidebar: #0c111c;
   --sidebar-foreground: #d5dce8;
   --sidebar-accent: rgba(200, 170, 110, 0.12);
   --sidebar-accent-foreground: #e6d5a8;
-  --sidebar-border: #1e2838;
+  --sidebar-border: #1a2436;
 
-  --selected-bg: #1c2434;
+  --selected-bg: #1a2438;
   --selected-fg: #e6d5a8;
   --selected-ring: #c8aa6e;
   --self-bg: rgba(200, 170, 110, 0.08);
@@ -84,73 +92,82 @@
   --sidebar-ring: #c8aa6e;
 }
 
-/* 亮色备选：保留可编译，不再作为视觉基准 */
+/* 亮色备选：精致质感——柔和阴影 + 温润色调 + 清晰层次 */
 [data-theme="light"] {
-  --background: #eef1f6;
-  --foreground: #141a24;
+  --background: #f0f2f6;
+  --foreground: #1a2230;
   --card: #ffffff;
-  --card-foreground: #141a24;
+  --card-hover: #f8f9fb;
+  --card-foreground: #1a2230;
   --popover: #ffffff;
-  --popover-foreground: #141a24;
-  --primary: #a67c2e;
+  --popover-foreground: #1a2230;
+  --primary: #b8922e;
   --primary-foreground: #ffffff;
-  --secondary: #e8edf4;
-  --secondary-foreground: #1e2838;
-  --muted: #e8edf4;
-  --muted-foreground: #5c6a80;
-  --accent: #e8edf4;
-  --accent-foreground: #141a24;
-  --destructive: #c43c48;
+  --secondary: #eef1f6;
+  --secondary-foreground: #2a3444;
+  --muted: #eef1f6;
+  --muted-foreground: #6b7a90;
+  --accent: #e8ecf2;
+  --accent-foreground: #1a2230;
+  --destructive: #d14b56;
   --destructive-foreground: #ffffff;
-  --border: #d0d8e4;
-  --input: #d0d8e4;
-  --ring: #a67c2e;
+  --border: #dde3ec;
+  --border-subtle: #e8ecf2;
+  --border-bright: #c5cedc;
+  --input: #dde3ec;
+  --ring: #b8922e;
 
-  --sidebar: #e4e9f1;
-  --sidebar-foreground: #1e2838;
-  --sidebar-accent: rgba(166, 124, 46, 0.12);
-  --sidebar-accent-foreground: #7a5c1e;
-  --sidebar-border: #d0d8e4;
+  --sidebar: #e8ecf2;
+  --sidebar-foreground: #2a3444;
+  --sidebar-accent: rgba(184, 146, 46, 0.1);
+  --sidebar-accent-foreground: #8a6c1e;
+  --sidebar-border: #d5dce8;
 
-  --selected-bg: #f3ebe0;
-  --selected-fg: #6b5420;
+  --selected-bg: #faf6eb;
+  --selected-fg: #8a6c1e;
   --selected-ring: #c8aa6e;
-  --self-bg: #f7f1e4;
+  --self-bg: #faf6eb;
 
-  --self-card-bg: #f7f1e4;
+  --self-card-bg: #fdf8ed;
   --self-card-border: #c8aa6e;
-  --toggle-on: #a67c2e;
+  --toggle-on: #b8922e;
   --rating-bg: #8a7340;
-  --career-bg: #4a5568;
+  --career-bg: #6b7a90;
 
-  --win-bg: #e7f8f2;
-  --win-fg: #0f8a6c;
-  --win-border: #7ed4b8;
+  --win-bg: #e8f8f2;
+  --win-fg: #0d8a68;
+  --win-border: #6ed4b0;
   --win-bar: #18b88c;
   --loss-bg: #fdeced;
-  --loss-fg: #b33842;
+  --loss-fg: #c43c48;
   --loss-border: #f0a8ad;
   --loss-bar: #e06b75;
   --remake-bg: #eef1f6;
-  --remake-fg: #5c6a80;
-  --remake-border: #d0d8e4;
-  --remake-bar: #8b95a8;
+  --remake-fg: #6b7a90;
+  --remake-border: #dde3ec;
+  --remake-bar: #a0aec0;
 
   --team-win-bg: #e8f2fb;
-  --team-win-fg: #1d5f9e;
+  --team-win-fg: #1d6ab5;
   --team-loss-bg: #fdeced;
-  --team-loss-fg: #b33842;
+  --team-loss-fg: #c43c48;
 
   --ally-bg: #e8f2fb;
-  --ally-fg: #1d5f9e;
+  --ally-fg: #1d6ab5;
   --ally-border: #8eb8e0;
   --ally-soft: #d3e6f8;
   --enemy-bg: #fdeced;
-  --enemy-fg: #b33842;
+  --enemy-fg: #c43c48;
   --enemy-border: #f0a8ad;
   --enemy-soft: #f9d5d8;
 
-  --good-fg: #0f8a6c;
+  --good-fg: #0d8a68;
+
+  --brand-gold: #b8922e;
+  --brand-gold-bright: #d4a840;
+  --brand-gold-dim: #8a6c1e;
+  --brand-gold-soft: rgba(184, 146, 46, 0.12);
+  --brand-gold-glow: rgba(184, 146, 46, 0.15);
 }
 
 /* 兼容旧 [data-theme="dark"] 显式设置（默认已是暗色，值一致） */
@@ -310,12 +327,16 @@
 
   body {
     margin: 0;
-    background-color: var(--background);
+    background: var(--background);
+    background-image:
+      radial-gradient(ellipse 120% 80% at 50% -20%, rgba(200, 170, 110, 0.03) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 60% at 80% 100%, rgba(74, 158, 222, 0.02) 0%, transparent 50%);
     color: var(--foreground);
     font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
     font-size: 13px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
     overflow: hidden;
   }
 
@@ -328,47 +349,88 @@
     font-variant-numeric: tabular-nums;
     font-weight: 650;
     letter-spacing: -0.01em;
+    text-shadow: 0 0 20px rgba(232, 236, 244, 0.08);
   }
 }
 
-/* 滚动条随主题：暗色默认，亮色覆盖 */
+/* ── 精致阴影系统 ──────────────────────────────────────────────── */
+.shadow-elevated {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 4px 16px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.shadow-card {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.shadow-gold {
+  box-shadow:
+    0 0 0 1px rgba(200, 170, 110, 0.12),
+    0 2px 12px rgba(200, 170, 110, 0.06);
+}
+
+/* 亮色主题阴影更明显，增加悬浮感 */
+[data-theme="light"] .shadow-elevated {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+[data-theme="light"] .shadow-card {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+/* 滚动条随主题：暗色默认，亮色覆盖 —— 半透明细条，融入界面 */
 html {
-  scrollbar-color: #2a364c #0a0d14;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
   scrollbar-width: thin;
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0d14;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a364c;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3d4d68;
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 [data-theme="light"] {
-  scrollbar-color: #c5cedc #eef1f6;
-}
-
-[data-theme="light"] ::-webkit-scrollbar-track {
-  background: #eef1f6;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
 }
 
 [data-theme="light"] ::-webkit-scrollbar-thumb {
-  background: #c5cedc;
+  background: rgba(0, 0, 0, 0.12);
+  background-clip: padding-box;
 }
 
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-  background: #a8b4c6;
+  background: rgba(0, 0, 0, 0.22);
+  background-clip: padding-box;
 }
 
 .drag-region {
@@ -410,7 +472,8 @@ html {
   transition:
     transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
     background-color 150ms ease,
-    color 150ms ease;
+    color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .press-scale:active:not(:disabled) {
@@ -424,6 +487,24 @@ html {
     background-color 160ms ease;
 }
 
+/* ── 金色光晕（品牌强调元素） ──────────────────────────────────── */
+.glow-gold {
+  box-shadow:
+    0 0 0 1px rgba(200, 170, 110, 0.2),
+    0 0 12px rgba(200, 170, 110, 0.08);
+}
+
+.glow-gold-strong {
+  box-shadow:
+    0 0 0 1px rgba(200, 170, 110, 0.3),
+    0 0 20px rgba(200, 170, 110, 0.12);
+}
+
+/* 数字发光（数据高亮） */
+.text-glow {
+  text-shadow: 0 0 20px rgba(200, 170, 110, 0.15);
+}
+
 .scrollbar-none {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -431,4 +512,15 @@ html {
 
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* ── 骨架屏：纯静态占位（无动画，避免大量元素重绘拖慢渲染） ──────── */
+.skeleton-shimmer {
+  background: var(--muted);
+  opacity: 0.6;
+}
+
+[data-theme="light"] .skeleton-shimmer {
+  background: #e2e8f0;
+  opacity: 1;
 }

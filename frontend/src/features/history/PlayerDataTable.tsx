@@ -71,7 +71,7 @@ function StatCell({
   const pct = max > 0 ? Math.min(100, Math.max(3, Math.round((value / max) * 100))) : 0;
   return (
     <div className="flex items-center justify-end gap-2 pr-1">
-      <span className="stat-num text-[14px]">{fmtNum(value)}</span>
+      <span className="stat-num text-[15px] font-semibold">{fmtNum(value)}</span>
       <span className="h-[3px] w-12 shrink-0 overflow-hidden rounded-full bg-muted">
         <span
           className={cn("block h-full rounded-full", RESULT_FILL[tone])}
@@ -96,14 +96,14 @@ const columns: ColumnDef<typeof features, PlayerTableRowData>[] = [
       const { p } = row.original;
       return (
         <div className="flex flex-col items-center gap-0.5">
-          <div className="stat-num whitespace-nowrap text-[15px]">
+          <div className="stat-num whitespace-nowrap text-[16px] font-bold">
             {p.kills}
-            <span className="mx-1 text-muted-foreground/45">/</span>
+            <span className="mx-1 text-[13px] font-normal text-muted-foreground/35">/</span>
             {p.deaths}
-            <span className="mx-1 text-muted-foreground/45">/</span>
+            <span className="mx-1 text-[13px] font-normal text-muted-foreground/35">/</span>
             {p.assists}
           </div>
-          <div className="tnum whitespace-nowrap text-[10px] text-muted-foreground/75">
+          <div className="tnum whitespace-nowrap text-[10px] text-muted-foreground/65">
             {p.kda} · {p.killParticipation}%
           </div>
         </div>
@@ -139,12 +139,12 @@ const columns: ColumnDef<typeof features, PlayerTableRowData>[] = [
           <TooltipTrigger asChild>
             <span
               className={cn(
-                "stat-num block cursor-help text-center text-[13px]",
+                "stat-num block cursor-help text-center text-[14px] font-semibold",
                 p.dmgRatio >= 1.15
                   ? "text-good-fg"
                   : p.dmgRatio >= 0.85
-                    ? "text-amber-300"
-                    : "text-loss-fg/90",
+                    ? "text-amber-500"
+                    : "text-loss-fg",
               )}
             >
               {Number.isFinite(p.dmgRatio) ? p.dmgRatio.toFixed(1) : "—"}
@@ -194,9 +194,16 @@ const columns: ColumnDef<typeof features, PlayerTableRowData>[] = [
     sortDescFirst: true,
     cell: ({ row }) => {
       const { p } = row.original;
+      const v = Number.isFinite(p.matchRating) ? p.matchRating : null;
       return (
-        <span className="stat-num block pr-1 text-right text-[15px]">
-          {Number.isFinite(p.matchRating) ? p.matchRating.toFixed(1) : "—"}
+        <span
+          className={cn(
+            "stat-num block pr-1 text-right text-[16px] font-bold",
+            v != null && v >= 12 && "text-brand-gold",
+            v != null && v < 8 && "text-muted-foreground/50",
+          )}
+        >
+          {v != null ? v.toFixed(1) : "—"}
         </span>
       );
     },

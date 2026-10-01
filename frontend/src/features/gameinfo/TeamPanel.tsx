@@ -32,7 +32,7 @@ function StatChip({
   return (
     <span
       title={title}
-      className="flex min-w-[72px] flex-col gap-1 rounded-full bg-card/70 px-2.5 py-1"
+      className="flex min-w-[72px] flex-col gap-1 rounded-full bg-card/60 px-2.5 py-1 ring-1 ring-border/30"
     >
       <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
         {label}
@@ -73,28 +73,20 @@ export function TeamPanel({ team, offline, opponent, phaseLabel }: Props) {
   return (
     <section
       className={cn(
-        "flex min-h-0 flex-1 flex-col rounded-lg border p-2.5",
+        "flex min-h-0 flex-1 flex-col rounded-lg",
         ally
-          ? "border-ally-border/50 bg-ally-bg/25"
-          : "border-enemy-border/50 bg-enemy-bg/25",
+          ? "bg-ally-bg/12 ring-1 ring-ally-border/20"
+          : "bg-enemy-bg/12 ring-1 ring-enemy-border/20",
       )}
     >
-      <header className="mb-2 flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-0.5">
+      <header className="mb-2 flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-3 pt-2.5 pb-1">
         <span
-          className={cn("h-1.5 w-1.5 shrink-0 rounded-full", ally ? "bg-ally-fg" : "bg-enemy-fg")}
+          className={cn("h-2 w-2 shrink-0 rounded-full", ally ? "bg-ally-fg" : "bg-enemy-fg")}
         />
         <span className="text-[13px] font-semibold">{team.label}</span>
-        <span className="text-[11px] text-muted-foreground">{team.sideText}</span>
-        <span
-          className={cn(
-            "rounded-full px-2 py-0.5 text-[10px] font-medium",
-            ally ? "bg-ally-soft text-ally-fg" : "bg-enemy-soft text-enemy-fg",
-          )}
-        >
-          {team.badge}
-        </span>
-        <span className="text-[11px] text-muted-foreground">
-          {team.playerCount} 人 · 阶段 {offline ? "—" : phaseLabel}
+        <span className="text-[11px] text-muted-foreground/70">{team.sideText}</span>
+        <span className="text-[11px] text-muted-foreground/50">
+          {team.playerCount} 人 · {offline ? "—" : phaseLabel}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           <StatChip
@@ -116,7 +108,7 @@ export function TeamPanel({ team, offline, opponent, phaseLabel }: Props) {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-5 gap-2.5">
+      <div className="grid min-h-0 flex-1 grid-cols-5 gap-2 px-2.5 pb-2.5">
         {team.slots.map((slot, i) => (
           <PlayerSlotCard
             key={`${team.key}-${i}`}

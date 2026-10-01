@@ -82,6 +82,35 @@ pub struct RankedInfo {
     pub puuid: String,
     pub solo: String,
     pub flex: String,
+    /// 结构化单双排段位（前端可直接做排序/筛选）
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub solo_tier: String,
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub solo_division: String,
+    #[serde(skip_serializing_if = "is_zero", default)]
+    pub solo_lp: i32,
+    /// 结构化灵活排段位
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub flex_tier: String,
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub flex_division: String,
+    #[serde(skip_serializing_if = "is_zero", default)]
+    pub flex_lp: i32,
+}
+
+fn is_zero(v: &i32) -> bool {
+    *v == 0
+}
+
+/// 段位结构化数据（solo + flex 各一套 tier/division/lp）。
+#[derive(Debug, Clone, Default)]
+pub struct RankPair {
+    pub solo_tier: String,
+    pub solo_division: String,
+    pub solo_lp: i32,
+    pub flex_tier: String,
+    pub flex_division: String,
+    pub flex_lp: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -144,6 +173,11 @@ impl HistoryService {
 
     pub fn set_sgp_enabled(&self, on: bool) {
         self.sgp_enabled.store(on, Ordering::Relaxed);
+    }
+
+    /// 启用资源磁盘缓存（在指定目录下创建 assets/ 子目录）。
+    pub fn set_asset_cache_dir(&self, dir: std::path::PathBuf) {
+        self.assets.set_disk_cache(dir);
     }
 
     pub fn sgp_enabled(&self) -> bool {
@@ -431,10 +465,9 @@ impl HistoryService {
             }
         }
 
-        let mut results: HashMap<String, (String, String, bool)> = HashMap::new();
+        let mut results: HashMap<String, (RankPair, bool)> = HashMap::new();
         for canonical in &order {
-            let mut solo = UNRANKED.to_string();
-            let mut flex = UNRANKED.to_string();
+            let mut rp = RankPair::default();
             let mut filled = false;
             let mut ok = false;
 
@@ -443,9 +476,7 @@ impl HistoryService {
                     if let Ok(stats) =
                         (self.sgp_ranked)(sgp_host.clone(), canonical.clone(), tok).await
                     {
-                        let (s, f) = sgp_ranked_display(&stats);
-                        solo = s;
-                        flex = f;
+                        rp = sgp_ranked_display(&stats);
                         filled = true;
                         ok = true;
                         break;
@@ -453,18 +484,17 @@ impl HistoryService {
                 }
             }
             if !filled {
-                if let Some((s, f)) = self.fetch_ranked_lcu(canonical).await {
-                    solo = s;
-                    flex = f;
+                if let Some(r) = self.fetch_ranked_lcu(canonical).await {
+                    rp = r;
                     ok = true;
                 }
             }
-            results.insert(canonical.clone(), (solo, flex, ok));
+            results.insert(canonical.clone(), (rp, ok));
         }
 
         let mut out = Vec::new();
         for canonical in order {
-            let Some((solo, flex, ok)) = results.get(&canonical) else {
+            let Some((rp, ok)) = results.get(&canonical) else {
                 continue;
             };
             if !ok {
@@ -480,8 +510,14 @@ impl HistoryService {
                     out.push(RankedInfo {
                         query_id: input_id.clone(),
                         puuid: puuid.clone(),
-                        solo: solo.clone(),
-                        flex: flex.clone(),
+                        solo: ranked_display(&rp.solo_tier, &rp.solo_division, rp.solo_lp),
+                        flex: ranked_display(&rp.flex_tier, &rp.flex_division, rp.flex_lp),
+                        solo_tier: rp.solo_tier.clone(),
+                        solo_division: rp.solo_division.clone(),
+                        solo_lp: rp.solo_lp,
+                        flex_tier: rp.flex_tier.clone(),
+                        flex_division: rp.flex_division.clone(),
+                        flex_lp: rp.flex_lp,
                     });
                 }
             }
@@ -500,7 +536,7 @@ impl HistoryService {
         (!p.is_empty()).then_some(p)
     }
 
-    async fn fetch_ranked_lcu(&self, id: &str) -> Option<(String, String)> {
+    async fn fetch_ranked_lcu(&self, id: &str) -> Option<RankPair> {
         let path = PATH_RANKED_STATS_BY_SUMMONER.replace("%s", &path_escape(id));
         let (status, body) = self.http.get(&path).await.ok()?;
         if !(200..300).contains(&status) {
@@ -557,10 +593,14 @@ impl HistoryService {
             }
         }
 
-        Some((
-            ranked_display(&solo_t, &solo_d, solo_lp),
-            ranked_display(&flex_t, &flex_d, flex_lp),
-        ))
+        Some(RankPair {
+            solo_tier: solo_t,
+            solo_division: solo_d,
+            solo_lp,
+            flex_tier: flex_t,
+            flex_division: flex_d,
+            flex_lp,
+        })
     }
 
     async fn fetch_sgp_tokens(&self) -> SgpTokens {
@@ -803,7 +843,7 @@ pub fn ranked_display(tier: &str, division: &str, lp: i32) -> String {
     parts.join(" ")
 }
 
-pub fn sgp_ranked_display(stats: &crate::sgp::RankedStats) -> (String, String) {
+pub fn sgp_ranked_display(stats: &crate::sgp::RankedStats) -> RankPair {
     let find = |queue: &str| -> (String, String, i32) {
         for q in &stats.queues {
             if q.queue_type == queue && !q.tier.is_empty() {
@@ -814,7 +854,14 @@ pub fn sgp_ranked_display(stats: &crate::sgp::RankedStats) -> (String, String) {
     };
     let (st, sd, sl) = find("RANKED_SOLO_5x5");
     let (ft, fd, fl) = find("RANKED_FLEX_SR");
-    (ranked_display(&st, &sd, sl), ranked_display(&ft, &fd, fl))
+    RankPair {
+        solo_tier: st,
+        solo_division: sd,
+        solo_lp: sl,
+        flex_tier: ft,
+        flex_division: fd,
+        flex_lp: fl,
+    }
 }
 
 pub fn normalize_asset_path(p: &str) -> String {
@@ -932,12 +979,16 @@ mod tests {
 
     #[test]
     fn sgp_ranked_display_filters_ghost_queues() {
-        let (solo, flex) = sgp_ranked_display(&sgp_canned());
-        assert_eq!(solo, "黄金 IV 45");
-        assert_eq!(flex, "白金 IV 91");
-        let (s, f) = sgp_ranked_display(&crate::sgp::RankedStats { queues: vec![] });
-        assert_eq!(s, "未定级");
-        assert_eq!(f, "未定级");
+        let rp = sgp_ranked_display(&sgp_canned());
+        assert_eq!(rp.solo_tier, "GOLD");
+        assert_eq!(rp.solo_division, "IV");
+        assert_eq!(rp.solo_lp, 45);
+        assert_eq!(rp.flex_tier, "PLATINUM");
+        assert_eq!(rp.flex_division, "IV");
+        assert_eq!(rp.flex_lp, 91);
+        let empty = sgp_ranked_display(&crate::sgp::RankedStats { queues: vec![] });
+        assert!(empty.solo_tier.is_empty());
+        assert!(empty.flex_tier.is_empty());
     }
 
     #[test]

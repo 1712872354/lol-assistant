@@ -6,9 +6,9 @@ import { useAppStore } from "@/stores/appStore";
 import { useGameinfoStore } from "@/stores/gameinfoStore";
 
 const STATE_UI: Record<ConnState, { dot: string; text: string }> = {
-  disconnected: { dot: "bg-zinc-400", text: "未连接客户端" },
-  unauthenticated: { dot: "bg-amber-400", text: "客户端未登录" },
-  connected: { dot: "bg-emerald-500", text: "已连接" },
+  disconnected: { dot: "bg-zinc-400 shadow-[0_0_6px_rgba(161,161,170,0.3)]", text: "未连接客户端" },
+  unauthenticated: { dot: "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.35)]", text: "客户端未登录" },
+  connected: { dot: "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]", text: "已连接" },
 };
 
 /**

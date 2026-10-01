@@ -11,9 +11,9 @@ const BAR_CLASS: Record<Tone, string> = {
   remake: "border-l-remake-bar",
 };
 const LABEL_CLASS: Record<Tone, string> = {
-  win: "text-win-fg",
-  loss: "text-loss-fg",
-  remake: "text-remake-fg",
+  win: "text-win-fg font-bold",
+  loss: "text-loss-fg font-bold",
+  remake: "text-remake-fg font-semibold",
 };
 
 interface Props {
@@ -32,10 +32,11 @@ export function MatchCard({ summary: s, active, onClick, className }: Props) {
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative flex w-full min-h-0 flex-1 items-center gap-2.5 rounded-md border border-l-[3px] bg-card/90 px-2.5 text-left transition-colors hover:bg-accent/60",
+        "group relative flex w-full min-h-0 flex-1 items-center gap-2.5 rounded-md border border-l-[3px] px-2.5 text-left",
+        "transition-all duration-150 ease-out",
         active
-          ? "border-l-selected-ring border-selected-ring/70 bg-selected-bg/80 ring-1 ring-selected-ring/50"
-          : cn(BAR_CLASS[r.tone], "border-border/55"),
+          ? "border-l-selected-ring border-selected-ring/60 bg-selected-bg shadow-[0_0_0_1px_rgba(200,170,110,0.15),0_2px_12px_rgba(200,170,110,0.06)]"
+          : cn(BAR_CLASS[r.tone], "border-border/50 bg-card/80 hover:bg-card-hover hover:border-border-bright/50"),
         className,
       )}
     >
@@ -43,7 +44,7 @@ export function MatchCard({ summary: s, active, onClick, className }: Props) {
         kind="champion"
         id={s.championId}
         size={40}
-        className="shrink-0 rounded-md"
+        className="shrink-0 rounded-md ring-1 ring-black/10"
       />
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex min-w-0 items-baseline gap-1.5">
@@ -54,21 +55,24 @@ export function MatchCard({ summary: s, active, onClick, className }: Props) {
             {s.duration}
           </span>
         </div>
-        <div className="stat-num text-[18px] leading-none">
+        <div className="stat-num text-[19px] font-bold leading-none text-foreground">
           {s.kills}
-          <span className="mx-1 text-[13px] font-normal text-muted-foreground/40">/</span>
+          <span className="mx-1 text-[13px] font-normal text-muted-foreground/30">/</span>
           {s.deaths}
-          <span className="mx-1 text-[13px] font-normal text-muted-foreground/40">/</span>
+          <span className="mx-1 text-[13px] font-normal text-muted-foreground/30">/</span>
           {s.assists}
         </div>
-        <div className="tnum text-[10px] leading-none text-muted-foreground/55">
+        <div className="tnum text-[10px] leading-none text-muted-foreground/50">
           {s.shortTime}
         </div>
       </div>
       <span
         className={cn(
-          "absolute right-2.5 top-2.5 text-[11px] font-semibold tracking-wide",
+          "absolute right-2.5 top-2.5 rounded px-1.5 py-px text-[11px] tracking-wider",
           LABEL_CLASS[r.tone],
+          r.tone === "win" && "bg-win-bg",
+          r.tone === "loss" && "bg-loss-bg",
+          r.tone === "remake" && "bg-remake-bg",
         )}
       >
         {r.label}

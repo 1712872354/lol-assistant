@@ -8,6 +8,18 @@ const assetCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
 const ASSET_CACHE_CAP = 800;
 
+function evictOldEntries() {
+  if (assetCache.size < ASSET_CACHE_CAP) return;
+  // 删除最旧的 25% 条目（Map 迭代顺序 = 插入顺序）
+  const toDelete = Math.floor(ASSET_CACHE_CAP * 0.25);
+  let deleted = 0;
+  for (const key of assetCache.keys()) {
+    if (deleted >= toDelete) break;
+    assetCache.delete(key);
+    deleted++;
+  }
+}
+
 /** 资源图标 base64 → data URL（内存缓存 + in-flight 合并） */
 function useAsset(kind: string, id: number): string | null {
   const key = `${kind}:${id}`;
@@ -29,7 +41,7 @@ function useAsset(kind: string, id: number): string | null {
       p = callAppStrict<AssetResult>("GetMatchAsset", kind, id)
         .then((r) => {
           const u = `data:${r.mime};base64,${r.data}`;
-          if (assetCache.size >= ASSET_CACHE_CAP) assetCache.clear();
+          evictOldEntries();
           assetCache.set(key, u);
           inflight.delete(key);
           return u;

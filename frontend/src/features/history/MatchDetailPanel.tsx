@@ -3,7 +3,6 @@ import { Check, Minus, MousePointerClick, RotateCcw, X } from "lucide-react";
 import { useMemo } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import type { MatchDetail, PlayerRow, RankedInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useHistoryStore, type HistoryTab } from "@/stores/historyStore";
@@ -116,10 +115,40 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
 
   if (detailQ.isPending) {
     return (
-      <div className="space-y-2 p-4">
-        <Skeleton className="h-8 w-1/2" />
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Skeleton key={i} className="h-10 w-full" />
+      <div className="flex h-full min-h-0 flex-col">
+        {/* 两队骨架 */}
+        {["win", "loss"].map((tone) => (
+          <div key={tone} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/* 队头 */}
+            <div className="flex shrink-0 items-center gap-2.5 border-b border-border/50 px-3 py-1.5">
+              <div className="skeleton-shimmer h-3.5 w-3.5 rounded bg-muted" />
+              <div className="skeleton-shimmer h-3.5 w-10 rounded-full bg-muted" />
+              <div className="skeleton-shimmer h-4 w-12 rounded-sm bg-muted" />
+              <div className="ml-auto flex items-center gap-2.5">
+                <div className="skeleton-shimmer h-3 w-16 rounded-full bg-muted" />
+                <div className="skeleton-shimmer h-3 w-12 rounded-full bg-muted" />
+              </div>
+            </div>
+            {/* 表头 */}
+            <div className="flex shrink-0 items-center gap-2 border-b border-border/30 px-3 py-1">
+              <div className="skeleton-shimmer h-2.5 w-16 rounded-full bg-muted" />
+              <div className="skeleton-shimmer h-2.5 w-10 rounded-full bg-muted" />
+              <div className="skeleton-shimmer h-2.5 w-10 rounded-full bg-muted" />
+              <div className="skeleton-shimmer h-2.5 w-10 rounded-full bg-muted" />
+              <div className="ml-auto skeleton-shimmer h-2.5 w-10 rounded-full bg-muted" />
+            </div>
+            {/* 行 */}
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2 border-b border-border/20 px-3 py-2">
+                <div className="skeleton-shimmer h-7 w-7 shrink-0 rounded bg-muted" />
+                <div className="skeleton-shimmer h-3 w-20 rounded-full bg-muted" />
+                <div className="skeleton-shimmer h-3 w-12 rounded-full bg-muted" />
+                <div className="skeleton-shimmer h-3 w-12 rounded-full bg-muted" />
+                <div className="skeleton-shimmer h-3 w-12 rounded-full bg-muted" />
+                <div className="ml-auto skeleton-shimmer h-3 w-10 rounded-full bg-muted" />
+              </div>
+            ))}
+          </div>
         ))}
       </div>
     );
@@ -189,12 +218,12 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
             >
               <div
                 className={cn(
-                  "flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-border/50 px-3 py-1.5",
+                  "flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-border/40 px-3 py-1.5",
                   TONE_HEADER[tone],
                 )}
               >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="text-[13px] font-semibold tracking-wide">{result}</span>
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="text-[14px] font-bold tracking-wide">{result}</span>
                 <span className="rounded-sm bg-background/40 px-1.5 py-0.5 text-[11px] font-medium">
                   {side}
                 </span>

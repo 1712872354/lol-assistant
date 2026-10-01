@@ -26,7 +26,7 @@ export function ThreatBar({
     <Progress
       value={pct}
       className={cn(
-        "mt-1 h-[3px] bg-muted/70",
+        "mt-1.5 h-[4px] rounded-full bg-muted/50",
         indicatorFill(THREAT_FILL[tone]),
       )}
     />

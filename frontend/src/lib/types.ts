@@ -213,6 +213,14 @@ export interface RankedInfo {
   puuid?: string;
   solo: string; // "黄金 IV 45" | "未定级"
   flex: string;
+  /** 结构化单双排段位 */
+  soloTier?: string; // "GOLD"
+  soloDivision?: string; // "IV"
+  soloLp?: number; // 45
+  /** 结构化灵活排段位 */
+  flexTier?: string;
+  flexDivision?: string;
+  flexLp?: number;
 }
 
 export interface AssetResult {

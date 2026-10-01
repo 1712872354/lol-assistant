@@ -54,6 +54,11 @@ pub fn run() {
             let hist = Arc::new(HistoryService::new(http.clone(), cfg.page_size as i32));
             hist.set_sgp_enabled(cfg.sgp_enabled);
 
+            // 资源磁盘缓存：重启后免重新拉取
+            if let Ok(data_dir) = app.path().app_data_dir() {
+                hist.set_asset_cache_dir(data_dir.join("assets"));
+            }
+
             let live = Arc::new(liveclient::Client::new());
             let hist_api: Arc<dyn HistApi> = hist.clone();
             let live_api: Arc<dyn LiveApi> = live;

@@ -461,6 +461,7 @@ async fn build_slots_enrich_and_hidden() {
             puuid: "PA".into(),
             solo: "黄金 IV 45".into(),
             flex: "未定级".into(),
+            ..Default::default()
         },
     );
     hist.matches.insert(

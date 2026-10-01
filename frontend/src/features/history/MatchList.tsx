@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { UNRANKED } from "@/lib/rank";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
 import { useHistoryStore, type HistoryTab } from "@/stores/historyStore";
 import { errMsg, fetchMatches, fetchPlayersRanked } from "./api";
 import { MatchCard } from "./MatchCard";
+import { MatchCardSkeleton } from "./MatchCardSkeleton";
 import { buildRankedMap, normId } from "./format";
 
 /** 左列固定展示条数：10 条均分高度，不滚动 */
@@ -153,7 +153,7 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden p-2">
         {q.isPending && !q.data ? (
           Array.from({ length: VISIBLE_COUNT }).map((_, i) => (
-            <Skeleton key={i} className="min-h-0 w-full flex-1 rounded-lg" />
+            <MatchCardSkeleton key={i} />
           ))
         ) : q.isError ? (
           <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">

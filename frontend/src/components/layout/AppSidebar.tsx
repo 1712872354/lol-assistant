@@ -44,8 +44,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       to={item.to}
                       className={({ isActive }) =>
                         cn(
+                          "transition-all duration-150",
                           isActive &&
-                            "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+                            "bg-sidebar-accent font-medium text-sidebar-accent-foreground shadow-[inset_0_0_0_1px_rgba(200,170,110,0.1)]",
                         )
                       }
                     >

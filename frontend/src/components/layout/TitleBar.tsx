@@ -39,7 +39,7 @@ export function TitleBar() {
 
   return (
     <header
-      className="drag-region flex h-11 shrink-0 select-none items-center gap-2 border-b border-border/70 bg-card px-2.5"
+      className="drag-region flex h-11 shrink-0 select-none items-center gap-2 border-b border-border/50 bg-card/80 px-2.5 backdrop-blur-sm"
       onDoubleClick={windowToggleMaximise}
     >
       <div className="no-drag">

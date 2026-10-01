@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { useAppStore } from "@/stores/appStore";
 import { phaseLabelCN } from "@/lib/phase";
 import { useGameinfoStore } from "@/stores/gameinfoStore";
+import { GameinfoSkeleton } from "./GameinfoSkeleton";
 import { TeamPanel } from "./TeamPanel";
 
 /**
@@ -20,13 +21,16 @@ export function GameInfoView() {
     void refresh();
   }, [refresh]);
 
+  const loading = useGameinfoStore((s) => s.loading);
+  const hasFilledSlots = view.teams.some((t) => t.slots.some((s) => s.filled));
+
   const empty = offline
     ? {
         icon: MonitorX,
         title: "客户端未连接",
         desc: "启动并登录英雄联盟客户端后，这里将自动展示双方玩家与近期战绩",
       }
-    : view.phase === "None"
+    : view.phase === "None" && !loading
       ? {
           icon: Gamepad2,
           title: "客户端空闲",
@@ -43,13 +47,15 @@ export function GameInfoView() {
   const enemyTeam = view.teams.find((t) => t.key === "enemy");
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 p-2">
+    <div className="flex h-full min-h-0 flex-col gap-2.5 p-3">
       {error ? (
-        <div className="shrink-0 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-1.5 text-xs text-destructive">
+        <div className="shrink-0 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive">
           刷新失败：{error}
         </div>
       ) : null}
-      {empty ? (
+      {loading && !hasFilledSlots && !empty ? (
+        <GameinfoSkeleton />
+      ) : empty ? (
         <EmptyState
           className="flex-1 border-dashed"
           icon={empty.icon}
@@ -58,7 +64,7 @@ export function GameInfoView() {
         />
       ) : (
         <>
-          <div className="flex min-h-0 flex-1 flex-col gap-2.5">
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
             {teams.map((team) => (
               <TeamPanel
                 key={team.key}
