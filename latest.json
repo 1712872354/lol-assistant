@@ -1,0 +1,15 @@
+{
+  "version": "1.3.0",
+  "notes": "### 性能\r\n\r\n- **资源磁盘缓存**：图标资源持久化到本地（`%APPDATA%/LOLAssistant/assets/`），重启后免重新拉取\r\n- **内存缓存 LRU 驱逐**：替换「满则全清」策略，改为淘汰最旧 25% 条目，命中率更高\r\n- **骨架屏优化**：静态占位替代动画 shimmer，减少渲染负担\r\n\r\n### 界面\r\n\r\n- **对局页侦察卡重设计**：胜率 + KDA 并排大数字对照，段位/评分层次更清晰，自卡金色光晕\r\n- **空槽等待态重设计**：极简虚线框 + 图标替代彩色骨架，不再抢注意力\r\n- **视觉质感提升**：阴影分层系统、滚动条半透明细条、金色光晕效果、字体渲染优化\r\n- **数据冲击力增强**：KDA/伤害/评分数字加粗突出，胜负标识色块药丸，评分色彩分级\r\n\r\n### 数据\r\n\r\n- **RankedInfo 结构化**：新增 `soloTier/soloDivision/soloLp` + `flexTier/flexDivision/flexLp` 字段，前端可直接做排序/筛选\r\n\r\n### 图标\r\n\r\n- **品牌图标全面替换**：采用 2048px 超采样 LANCZOS 降采样高质量版本\r\n- **icon.ico 瘦身**：40.6 KB → 25.4 KB（-37%），BMP 编码 4 尺寸（16/32/48/256）\r\n- **新增尺寸**：16×16（任务栏）、48×48（对话框）、compact SVG 变体（40-120px 专用）\r\n\r\n---",
+  "pub_date": "2026-10-01T10:41:54Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTalg4QWhJS08ya1NuVG8wK2NEaWRhZnpKdmIwN0lOMTN5Zlh1dUNJVWhGM1lPNEFsVVE1QnpFOU5KdkdFU0d4amxRNTUwSlpJNEc0SHI2aFBqSmxuWHo2SU9ncittdVE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwODUxMzEyCWZpbGU6TE9M5Yqp5omLXzEuMy4wX3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjMuMApYTDgvQ1pVMklENkYzYkNxTmVwTGczMmlDSks2ODFWd2dvNUprK3RIeDdyUWpjVUtINzRCK1BQdEVQT2hkTkRZVHROK2J1S2VRNWVaYjNpOFlPSXlDdz09Cg==",
+      "url": "https://raw.githubusercontent.com/1712872354/lol-assistant/dist/LOLAssistant-Setup-1.3.0.exe"
+    },
+    "windows-x86_64-portable": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTalg4QWhJS08ya2R5Uk1nWGxZQ3VhaTIyTXVNTXN0NDk0TWRtcHdaNElzSjlUY0w1N1VwQUlKc3dUcnJlL0YzN0dPUDlzUlJsSkhsTzFpVTloWUI4VUVVWmtEK0lBdndrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwODUxMzEzCWZpbGU6TE9MQXNzaXN0YW50LVBvcnRhYmxlLTEuMy4wLnppcAp6MVgzdjNRVzlISW9VK0RQRlZONjliaVcvN29NUy9zWm9URGowZENxOGYyZEZ3N0hBMENaR0prdUNGM2p1S1FMaEFDMG5ZRmplTW5oajBiL3ZOS1JEZz09Cg==",
+      "url": "https://raw.githubusercontent.com/1712872354/lol-assistant/dist/LOLAssistant-Portable-1.3.0.zip"
+    }
+  }
+}
