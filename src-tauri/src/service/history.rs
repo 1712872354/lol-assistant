@@ -778,6 +778,54 @@ impl HistoryService {
         self.assets.put_index(json_path, paths.clone());
         paths
     }
+
+    /** 资源名称映射（id → name）：与 lookup_index 同源 JSON，缓存键加 #name 后缀 */
+    async fn lookup_names(&self, json_path: &str) -> HashMap<i32, String> {
+        let cache_key = format!("{json_path}#name");
+        if let Some(names) = self.assets.get_index(&cache_key) {
+            return names;
+        }
+        let mut names = HashMap::new();
+        if let Some(body) = self.get_ok(json_path).await {
+            if let Ok(arr) = serde_json::from_slice::<Value>(&body) {
+                if let Some(list) = arr.as_array() {
+                    for e in list {
+                        let id = e["id"].as_i64().unwrap_or(0) as i32;
+                        let n = e["name"].as_str().filter(|s| !s.is_empty()).unwrap_or("");
+                        if id > 0 && !n.is_empty() {
+                            names.insert(id, n.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        self.assets.put_index(&cache_key, names.clone());
+        names
+    }
+
+    /** 资源名称批量查询（无障碍替代文本用）：kind ∈ item/spell/perk/augment */
+    pub async fn get_asset_names(
+        &self,
+        kind: &str,
+        ids: &[i32],
+    ) -> Result<HashMap<i32, String>, crate::error::AppError> {
+        let json_path = match kind {
+            ASSET_ITEM => PATH_GD_ITEMS,
+            ASSET_SPELL => PATH_GD_SPELLS,
+            ASSET_PERK => PATH_GD_PERKS,
+            ASSET_AUGMENT => PATH_GD_AUGMENTS,
+            _ => return Ok(HashMap::new()),
+        };
+        // 离线时返回空映射：名称是替代文本增强信息，不阻塞 UI
+        if self.ensure_connected().await.is_err() {
+            return Ok(HashMap::new());
+        }
+        let names = self.lookup_names(json_path).await;
+        Ok(ids
+            .iter()
+            .filter_map(|id| names.get(id).map(|n| (*id, n.clone())))
+            .collect())
+    }
 }
 
 /* ── 纯函数 ───────────────────────────────────────────────── */

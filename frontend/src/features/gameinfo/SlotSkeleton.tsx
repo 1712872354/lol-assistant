@@ -22,6 +22,7 @@ export function SlotSkeleton({ ally, caption, showCaption }: Props) {
       )}
     >
       <UserPlus
+        aria-hidden
         className={cn(
           "h-5 w-5 shrink-0",
           ally ? "text-ally-border/30" : "text-enemy-border/30",

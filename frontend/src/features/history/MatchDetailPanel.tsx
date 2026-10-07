@@ -116,7 +116,9 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
   if (detailQ.isPending) {
     return (
       <div className="flex h-full min-h-0 flex-col">
+        <p className="sr-only" role="status">正在加载对局明细…</p>
         {/* 两队骨架 */}
+        <div aria-hidden className="flex min-h-0 flex-1 flex-col">
         {["win", "loss"].map((tone) => (
           <div key={tone} className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {/* 队头 */}
@@ -150,13 +152,14 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
             ))}
           </div>
         ))}
+        </div>
       </div>
     );
   }
 
   if (detailQ.isError || !detail) {
     return (
-      <div className="m-4 space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
+      <div role="alert" className="m-4 space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
         <p className="font-medium text-destructive">对局明细加载失败</p>
         <p className="break-all text-xs text-muted-foreground">{errMsg(detailQ.error)}</p>
         <Button size="sm" variant="outline" onClick={() => detailQ.refetch()}>
@@ -171,7 +174,7 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
   const selfTeam = teams[0];
   if (!selfTeam) {
     return (
-      <div className="m-4 space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
+      <div role="alert" className="m-4 space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
         <p className="font-medium text-destructive">对局明细数据不完整</p>
         <p className="break-all text-xs text-muted-foreground">缺少队伍信息</p>
         <Button size="sm" variant="outline" onClick={() => detailQ.refetch()}>
@@ -222,25 +225,28 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
                   TONE_HEADER[tone],
                 )}
               >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="text-[14px] font-bold tracking-wide">{result}</span>
+                <Icon aria-hidden className="h-4 w-4 shrink-0" />
+                <h3 className="text-[14px] font-bold tracking-wide">{result}</h3>
                 <span className="rounded-sm bg-background/40 px-1.5 py-0.5 text-[11px] font-medium">
                   {side}
                 </span>
                 <span className="ml-auto flex flex-wrap items-center justify-end gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
-                  <span className="stat-num text-foreground/90" title="队伍 K/D/A">
+                  <span className="stat-num text-foreground/90">
+                    <span className="sr-only">队伍 K/D/A </span>
                     {team.kills}
-                    <span className="mx-0.5 text-muted-foreground/40">/</span>
+                    <span aria-hidden className="mx-0.5 text-muted-foreground/40">/</span>
                     {team.deaths}
-                    <span className="mx-0.5 text-muted-foreground/40">/</span>
+                    <span aria-hidden className="mx-0.5 text-muted-foreground/40">/</span>
                     {team.assists}
                   </span>
-                  <span className="opacity-30">·</span>
-                  <span className="tnum" title="队伍经济">
+                  <span aria-hidden className="opacity-30">·</span>
+                  <span className="tnum">
+                    <span className="sr-only">队伍经济 </span>
                     {fmtK(team.gold)}
                   </span>
-                  <span className="opacity-30">·</span>
-                  <span className="tnum" title="对局时长">
+                  <span aria-hidden className="opacity-30">·</span>
+                  <span className="tnum">
+                    <span className="sr-only">对局时长 </span>
                     {detail.duration}
                   </span>
                 </span>
@@ -265,19 +271,19 @@ export function MatchDetailPanel({ tab }: { tab: HistoryTab }) {
       {/* 底部汇总：时间拉开间距，胜负色区分双方数值 */}
       <div className="flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-border/60 bg-muted/25 px-4 py-1.5 text-[11px] text-muted-foreground">
         <span className="tnum">{detail.time}</span>
-        <span className="opacity-30">·</span>
+        <span aria-hidden className="opacity-30">·</span>
         <span className="tnum">用时 {detail.durationMin}</span>
-        <span className="opacity-30">·</span>
+        <span aria-hidden className="opacity-30">·</span>
         <span className="tnum whitespace-nowrap">
-          击杀 <span className={cn("font-semibold", selfTone)}>{selfTeam.kills}</span>
-          <span className="mx-0.5 opacity-40">/</span>
-          <span className={cn("font-semibold", otherTone)}>{otherSum.kills}</span>
+          击杀 <span className="sr-only">我方 </span><span className={cn("font-semibold", selfTone)}>{selfTeam.kills}</span>
+          <span aria-hidden className="mx-0.5 opacity-40">/</span>
+          <span className="sr-only">对方 </span><span className={cn("font-semibold", otherTone)}>{otherSum.kills}</span>
         </span>
-        <span className="opacity-30">·</span>
+        <span aria-hidden className="opacity-30">·</span>
         <span className="tnum whitespace-nowrap">
-          金钱 <span className={cn("font-semibold", selfTone)}>{fmtK(selfTeam.gold)}</span>
-          <span className="mx-0.5 opacity-40">/</span>
-          <span className={cn("font-semibold", otherTone)}>{fmtK(otherSum.gold)}</span>
+          金钱 <span className="sr-only">我方 </span><span className={cn("font-semibold", selfTone)}>{fmtK(selfTeam.gold)}</span>
+          <span aria-hidden className="mx-0.5 opacity-40">/</span>
+          <span className="sr-only">对方 </span><span className={cn("font-semibold", otherTone)}>{fmtK(otherSum.gold)}</span>
         </span>
       </div>
     </div>

@@ -36,9 +36,10 @@ function StatChip({
     >
       <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
         {label}
+        {title ? <span className="sr-only">（{title}）</span> : null}
         <span className={cn("tnum text-xs font-semibold", valueClass)}>{value}</span>
       </span>
-      {barPct != null ? <ThreatBar value={barPct} tone={barTone ?? "muted"} /> : null}
+      {barPct != null ? <ThreatBar value={barPct} tone={barTone ?? "muted"} label={label} /> : null}
     </span>
   );
 }
@@ -81,11 +82,12 @@ export function TeamPanel({ team, offline, opponent, phaseLabel }: Props) {
     >
       <header className="mb-2 flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-3 pt-2.5 pb-1">
         <span
+          aria-hidden
           className={cn("h-2 w-2 shrink-0 rounded-full", ally ? "bg-ally-fg" : "bg-enemy-fg")}
         />
-        <span className="text-[13px] font-semibold">{team.label}</span>
-        <span className="text-[11px] text-muted-foreground/70">{team.sideText}</span>
-        <span className="text-[11px] text-muted-foreground/50">
+        <h2 className="text-[13px] font-semibold">{team.label}</h2>
+        <span className="text-[11px] text-muted-foreground/80">{team.sideText}</span>
+        <span className="text-[11px] text-muted-foreground/75">
           {team.playerCount} 人 · {offline ? "—" : phaseLabel}
         </span>
         <div className="ml-auto flex items-center gap-1.5">

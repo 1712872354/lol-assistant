@@ -67,7 +67,8 @@ impl AssetCache {
                 if g.bytes.len() >= MAX_BYTE_ENTRIES {
                     g.bytes.clear();
                 }
-                g.bytes.insert(key.to_string(), (mime.clone(), data.clone()));
+                g.bytes
+                    .insert(key.to_string(), (mime.clone(), data.clone()));
                 return Some((mime, data));
             }
         }
@@ -81,7 +82,8 @@ impl AssetCache {
             if g.bytes.len() >= MAX_BYTE_ENTRIES {
                 g.bytes.clear();
             }
-            g.bytes.insert(key.to_string(), (mime.clone(), data.clone()));
+            g.bytes
+                .insert(key.to_string(), (mime.clone(), data.clone()));
         }
         // 异步写入磁盘（fire-and-forget，不阻塞调用方）
         let disk = self.disk_dir.lock().unwrap().clone();

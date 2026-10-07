@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,15 +23,31 @@ const SIDE_FILTERS: Array<{ value: GameinfoSideFilter; label: string }> = [
   { value: "enemy", label: "敌方" },
 ];
 
-/** 阵营分段：滑块指示器 + 按钮微缩放 */
+/** 阵营分段：滑块指示器 + 按钮微缩放（radiogroup + roving tabindex 键盘模式） */
 export function SideFilterControl() {
   const sideFilter = useGameinfoStore((s) => s.sideFilter);
   const setSideFilter = useGameinfoStore((s) => s.setSideFilter);
   const activeIndex = SIDE_FILTERS.findIndex((f) => f.value === sideFilter);
+  const btnRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  /** radiogroup 键盘模式：方向键切换 + 焦点跟随（WCAG 2.1.1） */
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, idx: number) => {
+    const n = SIDE_FILTERS.length;
+    let next = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (idx + 1) % n;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (idx - 1 + n) % n;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = n - 1;
+    if (next >= 0) {
+      e.preventDefault();
+      setSideFilter(SIDE_FILTERS[next].value);
+      btnRefs.current[next]?.focus();
+    }
+  };
 
   return (
     <div
-      role="tablist"
+      role="radiogroup"
       aria-label="阵营筛选"
       className="relative flex items-center rounded-lg bg-muted/60 p-0.5"
     >
@@ -44,14 +60,19 @@ export function SideFilterControl() {
           width: "calc((100% - 4px) / 3)",
         }}
       />
-      {SIDE_FILTERS.map((f) => {
+      {SIDE_FILTERS.map((f, i) => {
         const on = sideFilter === f.value;
         return (
           <button
             key={f.value}
+            ref={(el) => {
+              btnRefs.current[i] = el;
+            }}
             type="button"
-            role="tab"
-            aria-selected={on}
+            role="radio"
+            aria-checked={on}
+            tabIndex={on ? 0 : -1}
+            onKeyDown={(e) => onKeyDown(e, i)}
             onClick={() => setSideFilter(f.value)}
             className={cn(
               "relative z-[1] h-7 flex-1 rounded-md px-2.5 text-xs transition-[color,transform] duration-150 active:scale-[0.96]",
@@ -97,6 +118,7 @@ export function QueueTypeSelect({ disabled }: { disabled?: boolean }) {
             {queueFilterLabel(queueKey, queueLabel)}
           </span>
           <ChevronDown
+            aria-hidden
             className={cn(
               "h-3 w-3 shrink-0 opacity-60 transition-transform duration-200 ease-out",
               open && "rotate-180",
@@ -110,14 +132,24 @@ export function QueueTypeSelect({ disabled }: { disabled?: boolean }) {
           className={cn("justify-between text-xs", queueKey === "follow" && "font-semibold text-selected-fg")}
         >
           <span className="truncate">跟随对局（{queueLabel || "当前对局"}）</span>
-          {queueKey === "follow" ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+          {queueKey === "follow" ? (
+            <>
+              <Check aria-hidden className="h-3.5 w-3.5 shrink-0" />
+              <span className="sr-only">已选中</span>
+            </>
+          ) : null}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => pick("all")}
           className={cn("justify-between text-xs", queueKey === "all" && "font-semibold text-selected-fg")}
         >
           <span>全部对局</span>
-          {queueKey === "all" ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+          {queueKey === "all" ? (
+            <>
+              <Check aria-hidden className="h-3.5 w-3.5 shrink-0" />
+              <span className="sr-only">已选中</span>
+            </>
+          ) : null}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {QUEUE_TYPE_OPTIONS.map((o) => (
@@ -132,11 +164,16 @@ export function QueueTypeSelect({ disabled }: { disabled?: boolean }) {
             <span className="truncate">{o.label}</span>
             <span className="flex shrink-0 items-center gap-1">
               {currentKey === o.key ? (
-                <span className="rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">
+                <span className="rounded bg-muted px-1 text-[11px] font-normal text-muted-foreground">
                   当前
                 </span>
               ) : null}
-              {queueKey === o.key ? <Check className="h-3.5 w-3.5" /> : null}
+              {queueKey === o.key ? (
+                <>
+                  <Check aria-hidden className="h-3.5 w-3.5" />
+                  <span className="sr-only">已选中</span>
+                </>
+              ) : null}
             </span>
           </DropdownMenuItem>
         ))}

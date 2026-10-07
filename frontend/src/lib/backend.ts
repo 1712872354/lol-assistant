@@ -27,6 +27,7 @@ type InvokeFn =
   | "GetSelfSummoner"
   | "GetPlayersRanked"
   | "GetMatchAsset"
+  | "GetMatchAssetNames"
   | "GetGameflowState"
   | "WindowMinimise"
   | "WindowToggleMaximise"
@@ -58,6 +59,10 @@ const CMD_MAP: Record<InvokeFn, CmdSpec> = {
     pack: (a) => ({ queryIds: a[0] }),
   },
   GetMatchAsset: { cmd: "get_match_asset", pack: (a) => ({ kind: a[0], id: a[1] }) },
+  GetMatchAssetNames: {
+    cmd: "get_match_asset_names",
+    pack: (a) => ({ kind: a[0], ids: a[1] }),
+  },
   GetGameflowState: {
     cmd: "get_gameflow_state",
     pack: (a) => ({ queueFilter: a[0] }),

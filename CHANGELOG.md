@@ -17,6 +17,13 @@
 - **视觉质感提升**：阴影分层系统、滚动条半透明细条、金色光晕效果、字体渲染优化
 - **数据冲击力增强**：KDA/伤害/评分数字加粗突出，胜负标识色块药丸，评分色彩分级
 
+### 无障碍
+
+- **WCAG 2.2 AA 合规（战绩/对局两页 17 项闭环）**：表头排序按钮化 + `aria-sort`、全局键盘焦点环、标签关闭按钮移出非法嵌套
+- **语义色不单靠颜色**：本人行 / 威胁档位补文字；装备/召唤师技能/符文 alt 朗读真实名称（`get_match_asset_names` + `useAssetNames`）
+- **状态与标题**：错误 `role="alert"`、骨架 `aria-hidden`+加载播报、队头标题层级、复制成功 live region
+- **对比度**：亮色主题 muted/destructive/win/good/brand-gold 拉深至 ≥4.5:1；支持 `prefers-reduced-motion`
+
 ### 数据
 
 - **RankedInfo 结构化**：新增 `soloTier/soloDivision/soloLp` + `flexTier/flexDivision/flexLp` 字段，前端可直接做排序/筛选

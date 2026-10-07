@@ -31,6 +31,7 @@ export function MatchCard({ summary: s, active, onClick, className }: Props) {
     <button
       type="button"
       onClick={onClick}
+      aria-current={active ? "true" : undefined}
       className={cn(
         "group relative flex w-full min-h-0 flex-1 items-center gap-2.5 rounded-md border border-l-[3px] px-2.5 text-left",
         "transition-all duration-150 ease-out",
@@ -51,18 +52,19 @@ export function MatchCard({ summary: s, active, onClick, className }: Props) {
           <span className="truncate text-[11px] font-medium leading-none text-muted-foreground">
             {modeLabel}
           </span>
-          <span className="tnum shrink-0 text-[10px] leading-none text-muted-foreground/60">
+          <span className="tnum shrink-0 text-[11px] leading-none text-muted-foreground/75">
             {s.duration}
           </span>
         </div>
         <div className="stat-num text-[19px] font-bold leading-none text-foreground">
+          <span className="sr-only">KDA </span>
           {s.kills}
-          <span className="mx-1 text-[13px] font-normal text-muted-foreground/30">/</span>
+          <span aria-hidden className="mx-1 text-[13px] font-normal text-muted-foreground/30">/</span>
           {s.deaths}
-          <span className="mx-1 text-[13px] font-normal text-muted-foreground/30">/</span>
+          <span aria-hidden className="mx-1 text-[13px] font-normal text-muted-foreground/30">/</span>
           {s.assists}
         </div>
-        <div className="tnum text-[10px] leading-none text-muted-foreground/50">
+        <div className="tnum text-[11px] leading-none text-muted-foreground/75">
           {s.shortTime}
         </div>
       </div>

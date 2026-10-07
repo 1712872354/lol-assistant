@@ -24,7 +24,7 @@ export function RankChip({
     >
       <span className="truncate text-[12px] font-semibold">{main}</span>
       {lp ? (
-        <span className="tnum shrink-0 text-[10px] font-medium opacity-65">{lp}</span>
+        <span className="tnum shrink-0 text-[11px] font-medium opacity-80">{lp}</span>
       ) : null}
     </span>
   );

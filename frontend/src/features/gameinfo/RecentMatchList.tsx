@@ -27,7 +27,7 @@ export function RecentMatchList({ recent, uniformQueue, hiddenCareer }: Props) {
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 {!uniformQueue ? (
-                  <span className="shrink-0 rounded bg-muted px-1 py-px text-[10px] text-muted-foreground">
+                  <span className="shrink-0 rounded bg-muted px-1 py-px text-[11px] text-muted-foreground">
                     {r.queueShort || "对局"}
                   </span>
                 ) : (
@@ -51,9 +51,9 @@ export function RecentMatchList({ recent, uniformQueue, hiddenCareer }: Props) {
                 )}
               </div>
               {!uniformQueue ? (
-                <div className="mt-0.5 text-[10px] leading-none text-muted-foreground">
+                <div className="mt-0.5 text-[11px] leading-none text-muted-foreground">
                   {relTime(r.gameCreation, r.timeShort)}
-                  <span className="mx-0.5">·</span>
+                  <span aria-hidden className="mx-0.5">·</span>
                   <span
                     className={cn(
                       "font-semibold",
@@ -66,6 +66,7 @@ export function RecentMatchList({ recent, uniformQueue, hiddenCareer }: Props) {
               ) : null}
             </div>
             <div className="tnum shrink-0 text-[13px] font-semibold">
+              <span className="sr-only">KDA </span>
               {r.kills}/{r.deaths}/{r.assists}
             </div>
           </div>

@@ -25,3 +25,7 @@ src-tauri/gen/
 
 # 本地会话配置
 .claude/
+
+# 本地代理工作目录
+.mimocode/
+.workbuddy/

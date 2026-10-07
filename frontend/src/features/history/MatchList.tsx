@@ -144,19 +144,24 @@ export function MatchList({ tab }: { tab: HistoryTab }) {
           >
             {selfRankLabel || UNRANKED}
           </span>
-          <span className="mx-1 opacity-40">·</span>
-          第 {page + 1} 页
+          <span aria-hidden className="mx-1 opacity-40">·</span>
+          <span aria-live="polite">第 {page + 1} 页</span>
         </div>
       </div>
 
       {/* 固定 10 槽位：卡片 flex-1 均分高度，禁止滚动 */}
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden p-2">
         {q.isPending && !q.data ? (
-          Array.from({ length: VISIBLE_COUNT }).map((_, i) => (
-            <MatchCardSkeleton key={i} />
-          ))
+          <>
+            <p className="sr-only" role="status">正在加载战绩…</p>
+            <div aria-hidden className="flex min-h-0 flex-1 flex-col gap-1.5">
+              {Array.from({ length: VISIBLE_COUNT }).map((_, i) => (
+                <MatchCardSkeleton key={i} />
+              ))}
+            </div>
+          </>
         ) : q.isError ? (
-          <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
+          <div role="alert" className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
             <p className="font-medium text-destructive">获取战绩失败</p>
             <p className="break-all text-muted-foreground">{errMsg(q.error)}</p>
             <Button size="sm" variant="outline" onClick={() => q.refetch()}>

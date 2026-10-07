@@ -86,6 +86,8 @@
   --enemy-soft: rgba(224, 107, 117, 0.22);
 
   --good-fg: #2dd4a8;
+  /* 中档警示色（伤转/胜率 mid 档） */
+  --mid-fg: #f59e0b;
 
   --sidebar-primary: #c8aa6e;
   --sidebar-primary-foreground: #14100a;
@@ -106,10 +108,12 @@
   --secondary: #eef1f6;
   --secondary-foreground: #2a3444;
   --muted: #eef1f6;
-  --muted-foreground: #6b7a90;
+  /* a11y: 拉深以满足 4.5:1（原 #6b7a90 仅 4.36:1） */
+  --muted-foreground: #5c6a80;
   --accent: #e8ecf2;
   --accent-foreground: #1a2230;
-  --destructive: #d14b56;
+  /* a11y: 拉深以满足白底 4.5:1（原 #d14b56 仅 3.86:1） */
+  --destructive: #b13742;
   --destructive-foreground: #ffffff;
   --border: #dde3ec;
   --border-subtle: #e8ecf2;
@@ -135,7 +139,8 @@
   --career-bg: #6b7a90;
 
   --win-bg: #e8f8f2;
-  --win-fg: #0d8a68;
+  /* a11y: 拉深以满足 win-bg 上 4.5:1（原 #0d8a68 仅 3.94:1） */
+  --win-fg: #0a7055;
   --win-border: #6ed4b0;
   --win-bar: #18b88c;
   --loss-bg: #fdeced;
@@ -143,7 +148,7 @@
   --loss-border: #f0a8ad;
   --loss-bar: #e06b75;
   --remake-bg: #eef1f6;
-  --remake-fg: #6b7a90;
+  --remake-fg: #5c6a80;
   --remake-border: #dde3ec;
   --remake-bar: #a0aec0;
 
@@ -161,9 +166,12 @@
   --enemy-border: #f0a8ad;
   --enemy-soft: #f9d5d8;
 
-  --good-fg: #0d8a68;
+  /* a11y: 与 win-fg 同步拉深（原 #0d8a68 对白仅 4.33:1） */
+  --good-fg: #0a7055;
+  /* 中档警示色（伤转/胜率 mid 档）：amber-700 保证亮色 4.5:1 */
+  --mid-fg: #b45309;
 
-  --brand-gold: #b8922e;
+  --brand-gold: #8a6c1e;
   --brand-gold-bright: #d4a840;
   --brand-gold-dim: #8a6c1e;
   --brand-gold-soft: rgba(184, 146, 46, 0.12);
@@ -237,6 +245,8 @@
   --enemy-soft: rgba(224, 107, 117, 0.22);
 
   --good-fg: #2dd4a8;
+  /* 中档警示色（伤转/胜率 mid 档） */
+  --mid-fg: #f59e0b;
 
   --sidebar-primary: #c8aa6e;
   --sidebar-primary-foreground: #14100a;
@@ -278,6 +288,7 @@
   --color-rating-bg: var(--rating-bg);
   --color-career-bg: var(--career-bg);
   --color-brand-gold: var(--brand-gold);
+  --color-mid-fg: var(--mid-fg);
   --color-win-bg: var(--win-bg);
   --color-win-fg: var(--win-fg);
   --color-win-border: var(--win-border);
@@ -523,4 +534,24 @@ html {
 [data-theme="light"] .skeleton-shimmer {
   background: #e2e8f0;
   opacity: 1;
+}
+
+/* ── 无障碍：键盘焦点可见（WCAG 2.4.7）────────────────────────────
+   shadcn Button/Input 自带 focus-visible:ring 并置 outline-none，
+   不受影响；原生 <button> 等交互元素由本规则提供焦点环 */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* ── 无障碍：减弱动效（prefers-reduced-motion）──────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

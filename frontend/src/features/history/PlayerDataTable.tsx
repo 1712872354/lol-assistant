@@ -29,6 +29,7 @@ import { toSummonerResult } from "@/lib/summoner";
 import { RESULT_FILL, type Tone } from "@/lib/tone";
 import type { PlayerRow, RankedInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useAssetNames } from "@/lib/useAssetNames";
 import { useHistoryStore } from "@/stores/historyStore";
 import { fmtNum, rankedDisplay } from "./format";
 
@@ -72,12 +73,41 @@ function StatCell({
   return (
     <div className="flex items-center justify-end gap-2 pr-1">
       <span className="stat-num text-[15px] font-semibold">{fmtNum(value)}</span>
-      <span className="h-[3px] w-12 shrink-0 overflow-hidden rounded-full bg-muted">
+      {/* 相对条为数值的冗余可视化，读屏由上方数字承载 */}
+      <span aria-hidden className="h-[3px] w-12 shrink-0 overflow-hidden rounded-full bg-muted">
         <span
           className={cn("block h-full rounded-full", RESULT_FILL[tone])}
           style={{ width: `${pct}%` }}
         />
       </span>
+    </div>
+  );
+}
+
+/** 装备格：逐件名称 alt（读屏可读出装备名） */
+function ItemSlotsCell({ p }: { p: PlayerRow }) {
+  const slots = Array.from({ length: 7 }, (_, i) => p.items?.[i] ?? 0);
+  const names = useAssetNames("item", slots);
+  return (
+    <div className="flex items-center justify-center gap-[3px]">
+      {slots.map((id, i) =>
+        id > 0 ? (
+          <AssetImg
+            key={`it-${i}`}
+            kind="item"
+            id={id}
+            size={22}
+            alt={names.get(id) ?? "装备"}
+            className="rounded-[4px]"
+          />
+        ) : (
+          <span
+            key={`it-${i}`}
+            aria-hidden
+            className="inline-block h-[22px] w-[22px] shrink-0 rounded-[4px] bg-muted/45"
+          />
+        ),
+      )}
     </div>
   );
 }
@@ -97,14 +127,15 @@ const columns: ColumnDef<typeof features, PlayerTableRowData>[] = [
       return (
         <div className="flex flex-col items-center gap-0.5">
           <div className="stat-num whitespace-nowrap text-[16px] font-bold">
+            <span className="sr-only">KDA </span>
             {p.kills}
-            <span className="mx-1 text-[13px] font-normal text-muted-foreground/35">/</span>
+            <span aria-hidden className="mx-1 text-[13px] font-normal text-muted-foreground/35">/</span>
             {p.deaths}
-            <span className="mx-1 text-[13px] font-normal text-muted-foreground/35">/</span>
+            <span aria-hidden className="mx-1 text-[13px] font-normal text-muted-foreground/35">/</span>
             {p.assists}
           </div>
-          <div className="tnum whitespace-nowrap text-[10px] text-muted-foreground/65">
-            {p.kda} · {p.killParticipation}%
+          <div className="tnum whitespace-nowrap text-[11px] text-muted-foreground/80">
+            {p.kda} · <span className="sr-only">参团率 </span>{p.killParticipation}%
           </div>
         </div>
       );
@@ -137,13 +168,15 @@ const columns: ColumnDef<typeof features, PlayerTableRowData>[] = [
       return (
         <Tooltip>
           <TooltipTrigger asChild>
+            {/* tabIndex 使提示可键盘聚焦获取（title/hover 不可达） */}
             <span
+              tabIndex={0}
               className={cn(
                 "stat-num block cursor-help text-center text-[14px] font-semibold",
                 p.dmgRatio >= 1.15
                   ? "text-good-fg"
                   : p.dmgRatio >= 0.85
-                    ? "text-amber-500"
+                    ? "text-mid-fg"
                     : "text-loss-fg",
               )}
             >
@@ -161,31 +194,7 @@ const columns: ColumnDef<typeof features, PlayerTableRowData>[] = [
     id: "items",
     header: "装备",
     enableSorting: false,
-    cell: ({ row }) => {
-      const { p } = row.original;
-      const slots = Array.from({ length: 7 }, (_, i) => p.items?.[i] ?? 0);
-      return (
-        <div className="flex items-center justify-center gap-[3px]">
-          {slots.map((id, i) =>
-            id > 0 ? (
-              <AssetImg
-                key={`it-${i}`}
-                kind="item"
-                id={id}
-                size={22}
-                className="rounded-[4px]"
-              />
-            ) : (
-              <span
-                key={`it-${i}`}
-                aria-hidden
-                className="inline-block h-[22px] w-[22px] shrink-0 rounded-[4px] bg-muted/45"
-              />
-            ),
-          )}
-        </div>
-      );
-    },
+    cell: ({ row }) => <ItemSlotsCell p={row.original.p} />,
   },
   {
     id: "rating",
@@ -200,7 +209,7 @@ const columns: ColumnDef<typeof features, PlayerTableRowData>[] = [
           className={cn(
             "stat-num block pr-1 text-right text-[16px] font-bold",
             v != null && v >= 12 && "text-brand-gold",
-            v != null && v < 8 && "text-muted-foreground/50",
+            v != null && v < 8 && "text-muted-foreground/75",
           )}
         >
           {v != null ? v.toFixed(1) : "—"}
@@ -213,6 +222,11 @@ const columns: ColumnDef<typeof features, PlayerTableRowData>[] = [
 function PlayerCell({ row }: { row: PlayerTableRowData }) {
   const { p, ranked, badge } = row;
   const openSummoner = useHistoryStore((s) => s.openSummoner);
+  const spellNames = useAssetNames(
+    "spell",
+    [p.spell1Id, p.spell2Id].filter((id) => id > 0),
+  );
+  const perkNames = useAssetNames("perk", p.runeId > 0 ? [p.runeId] : []);
   const hash = p.name.indexOf("#");
   const base = hash >= 0 ? p.name.slice(0, hash) : p.name;
   const tag = hash >= 0 ? p.name.slice(hash) : "";
@@ -238,15 +252,35 @@ function PlayerCell({ row }: { row: PlayerTableRowData }) {
     <div className="flex items-center gap-2.5 pl-4 pr-3">
       <div className="relative shrink-0">
         <AssetImg kind="champion" id={p.championId} size={42} className="rounded-lg" />
-        <span className="absolute -bottom-1 -right-1 rounded bg-black/70 px-1 text-[10px] leading-[14px] text-white tnum">
+        <span className="absolute -bottom-1 -right-1 rounded bg-black/70 px-1 text-[11px] leading-[14px] text-white tnum">
+          <span className="sr-only">英雄等级 </span>
           {p.champLevel}
         </span>
       </div>
+      {/* 召唤师技能/符文：逐件名称 alt */}
       <div className="flex shrink-0 flex-col gap-[3px]">
-        <AssetImg kind="spell" id={p.spell1Id} size={15} className="rounded-[3px]" />
-        <AssetImg kind="spell" id={p.spell2Id} size={15} className="rounded-[3px]" />
+        <AssetImg
+          kind="spell"
+          id={p.spell1Id}
+          size={15}
+          alt={p.spell1Id > 0 ? (spellNames.get(p.spell1Id) ?? "召唤师技能") : ""}
+          className="rounded-[3px]"
+        />
+        <AssetImg
+          kind="spell"
+          id={p.spell2Id}
+          size={15}
+          alt={p.spell2Id > 0 ? (spellNames.get(p.spell2Id) ?? "召唤师技能") : ""}
+          className="rounded-[3px]"
+        />
       </div>
-      <AssetImg kind="perk" id={p.runeId} size={15} className="shrink-0 rounded-full" />
+      <AssetImg
+        kind="perk"
+        id={p.runeId}
+        size={15}
+        alt={p.runeId > 0 ? (perkNames.get(p.runeId) ?? "符文") : ""}
+        className="shrink-0 rounded-full"
+      />
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-1.5">
@@ -264,15 +298,16 @@ function PlayerCell({ row }: { row: PlayerTableRowData }) {
           >
             {base}
             {tag ? (
-              <span className="ml-0.5 text-[11px] font-normal text-muted-foreground/70">
+              <span className="ml-0.5 text-[11px] font-normal text-muted-foreground/80">
                 {tag}
               </span>
             ) : null}
+            {p.isSelf ? <span className="sr-only">（本人）</span> : null}
           </button>
           {badge ? (
             <span
               className={cn(
-                "shrink-0 rounded px-1 py-px text-[9px] font-bold leading-[14px] tracking-wider",
+                "shrink-0 rounded px-1 py-px text-[11px] font-bold leading-[14px] tracking-wider",
                 badge === "MVP"
                   ? "bg-brand-gold/20 text-brand-gold"
                   : "bg-muted text-muted-foreground border border-border/60",
@@ -285,10 +320,11 @@ function PlayerCell({ row }: { row: PlayerTableRowData }) {
         <div
           className={cn(
             "flex items-center gap-1 text-[11px] leading-none",
-            hasRank ? "text-brand-gold/95" : "text-muted-foreground/60",
+            hasRank ? "text-brand-gold/95" : "text-muted-foreground/75",
           )}
         >
           <Crown
+            aria-hidden
             className={cn("h-3 w-3 shrink-0", hasRank ? "text-brand-gold/80" : "opacity-30")}
           />
           <span className="truncate">{rankText}</span>
@@ -365,22 +401,40 @@ export function PlayerDataTable({ data }: { data: PlayerTableRowData[] }) {
                       hi === 0 && "pl-4 text-left",
                       hi === 1 && "text-center",
                       hi === 5 && "text-center",
-                      (hi === 2 || hi === 3 || hi === 4 || hi === 6) &&
-                        "cursor-pointer pr-1 text-right select-none hover:text-foreground",
+                      (hi === 2 || hi === 3 || hi === 4 || hi === 6) && "pr-1 text-right select-none",
                     )}
-                    onClick={
-                      canSort ? header.column.getToggleSortingHandler() : undefined
+                    aria-sort={
+                      canSort
+                        ? sorted === "asc"
+                          ? "ascending"
+                          : sorted === "desc"
+                            ? "descending"
+                            : "none"
+                        : undefined
                     }
-                    title={hint}
                   >
-                    <span className="inline-flex items-center gap-0.5">
-                      {label}
-                      {sorted ? (
-                        <span className="text-[9px] opacity-70">
-                          {sorted === "desc" ? "▼" : "▲"}
+                    {canSort ? (
+                      // 排序交互由 <button> 承载：键盘可达（WCAG 2.1.1）
+                      <button
+                        type="button"
+                        onClick={header.column.getToggleSortingHandler()}
+                        title={hint}
+                        aria-label={`按${typeof label === "string" ? label : "此列"}排序，当前${sorted === "desc" ? "降序" : sorted === "asc" ? "升序" : "未排序"}`}
+                        className={cn(
+                          "inline-flex w-full items-center gap-0.5 px-1 py-1 hover:text-foreground",
+                          hi === 1 ? "justify-center" : "justify-end",
+                        )}
+                      >
+                        {label}
+                        <span aria-hidden className="text-[10px] opacity-40">
+                          {sorted === "desc" ? "▼" : sorted === "asc" ? "▲" : "↕"}
                         </span>
-                      ) : null}
-                    </span>
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-0.5">{label}</span>
+                    )}
+                    {/* 列说明放按钮外，避免混入可访问名 */}
+                    {hint ? <span className="sr-only">{hint}</span> : null}
                   </TableHead>
                 );
               })}

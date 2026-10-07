@@ -49,12 +49,20 @@ export function GameInfoView() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-2.5 p-3">
       {error ? (
-        <div className="shrink-0 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive">
+        <div
+          role="alert"
+          className="shrink-0 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive"
+        >
           刷新失败：{error}
         </div>
       ) : null}
       {loading && !hasFilledSlots && !empty ? (
-        <GameinfoSkeleton />
+        <>
+          <p className="sr-only" role="status">正在加载对局信息…</p>
+          <div aria-hidden className="flex min-h-0 flex-1 flex-col">
+            <GameinfoSkeleton />
+          </div>
+        </>
       ) : empty ? (
         <EmptyState
           className="flex-1 border-dashed"

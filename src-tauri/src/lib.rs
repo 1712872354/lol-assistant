@@ -166,6 +166,7 @@ pub fn run() {
             commands::get_self_summoner,
             commands::get_players_ranked,
             commands::get_match_asset,
+            commands::get_match_asset_names,
             commands::get_gameflow_state,
             commands::check_update,
             commands::download_and_install_update,

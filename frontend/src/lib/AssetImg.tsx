@@ -72,13 +72,15 @@ interface AssetImgProps {
   size?: number;
   className?: string;
   title?: string;
+  /** 信息型图像传真实名称（如近况 KDA）；纯装饰留空（默认） */
+  alt?: string;
 }
 
 /**
  * LCU 资源图标：经 Go 代理取 base64 → data URL。
  * id<=0 渲染空槽位；加载中渲染脉冲占位；失败保持占位（不破坏布局）。
  */
-export function AssetImg({ kind, id, size = 20, className, title }: AssetImgProps) {
+export function AssetImg({ kind, id, size = 20, className, title, alt = "" }: AssetImgProps) {
   const url = useAsset(kind, id);
   const style = { width: size, height: size };
 
@@ -103,7 +105,7 @@ export function AssetImg({ kind, id, size = 20, className, title }: AssetImgProp
   return (
     <img
       src={url}
-      alt=""
+      alt={alt}
       title={title}
       draggable={false}
       style={style}

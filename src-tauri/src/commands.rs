@@ -2,6 +2,7 @@
 //! Tauri 命令为 snake_case 函数名；具名参数 JS 侧用 camelCase（Tauri 2 默认转换）。
 //! 错误边界：内部 `AppError` 在此转用户可读文案（`String`）给前端。
 
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
 use tauri::{AppHandle, Manager, State};
@@ -89,6 +90,15 @@ pub async fn get_match_asset(
     id: i32,
 ) -> Result<AssetResult, String> {
     Ok(state.hist.get_asset(&kind, id).await?)
+}
+
+#[tauri::command]
+pub async fn get_match_asset_names(
+    state: State<'_, AppState>,
+    kind: String,
+    ids: Vec<i32>,
+) -> Result<HashMap<i32, String>, String> {
+    Ok(state.hist.get_asset_names(&kind, &ids).await?)
 }
 
 /* ── M3 对局信息 ── */

@@ -99,33 +99,34 @@ export function SummonerTabs({ onRefresh }: Props) {
         className="min-w-0 flex-1"
       >
         <TabsList className="scrollbar-none h-9 max-w-full justify-start overflow-x-auto bg-transparent p-0">
-          {tabs.map((t) => (
-            <TabsTrigger
-              key={t.id}
-              value={t.id}
-              className={cn(
-                "group h-8 max-w-[220px] min-w-0 shrink-0 gap-1.5 rounded-lg border px-2.5 text-xs transition-colors",
-                t.id === activeTabId
-                  ? "border-brand-gold/50 bg-card font-medium text-foreground shadow-[0_0_0_1px_rgba(200,170,110,0.25)]"
-                  : "border-transparent text-muted-foreground/80 hover:bg-card/60 hover:text-foreground",
-              )}
-            >
-              <AssetImg kind="profile" id={t.iconId} size={16} className="rounded-full" />
-              <span className="truncate">{t.name.split("#")[0] || t.name}</span>
-              {/* 关闭按钮：与选择按钮为兄弟节点（避免嵌套交互），且键盘可达 */}
-              <button
-                type="button"
-                aria-label="关闭标签"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeTab(t.id);
-                }}
-                className="rounded p-0.5 opacity-60 transition-opacity hover:bg-muted hover:opacity-100"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </TabsTrigger>
-          ))}
+          {tabs.map((t) => {
+            const name = t.name.split("#")[0] || t.name;
+            return (
+              // 关闭按钮与 TabsTrigger(button) 为兄弟节点：避免 button 嵌套（非法 DOM）
+              <div key={t.id} className="relative max-w-[220px] min-w-0 shrink-0">
+                <TabsTrigger
+                  value={t.id}
+                  className={cn(
+                    "group h-8 w-full gap-1.5 rounded-lg border px-2.5 pr-6 text-xs transition-colors",
+                    t.id === activeTabId
+                      ? "border-brand-gold/50 bg-card font-medium text-foreground shadow-[0_0_0_1px_rgba(200,170,110,0.25)]"
+                      : "border-transparent text-muted-foreground/85 hover:bg-card/60 hover:text-foreground",
+                  )}
+                >
+                  <AssetImg kind="profile" id={t.iconId} size={16} className="rounded-full" />
+                  <span className="truncate">{name}</span>
+                </TabsTrigger>
+                <button
+                  type="button"
+                  aria-label={`关闭 ${name} 的标签页`}
+                  onClick={() => closeTab(t.id)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-60 transition-opacity hover:bg-muted hover:opacity-100"
+                >
+                  <X aria-hidden className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
         </TabsList>
       </Tabs>
 
@@ -156,6 +157,7 @@ export function SummonerTabs({ onRefresh }: Props) {
               autoFocus
               onChange={(e) => setQuery(e.target.value)}
               placeholder="昵称#TAG，例如 安静的亚索#CN1"
+              aria-label="Riot ID（昵称#TAG）"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && query.trim()) searchMut.mutate(query);
               }}
@@ -170,7 +172,9 @@ export function SummonerTabs({ onRefresh }: Props) {
                 {searchMut.isPending ? "查询中" : "查询"}
               </Button>
             </div>
-            {searchErr ? <p className="text-xs text-destructive">{searchErr}</p> : null}
+            {searchErr ? (
+              <p role="alert" className="text-xs text-destructive">{searchErr}</p>
+            ) : null}
           </PopoverContent>
         </Popover>
 
@@ -206,7 +210,7 @@ export function SummonerTabs({ onRefresh }: Props) {
               disabled={offline || !activeTab}
             >
               {filterLabel}
-              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              <ChevronDown aria-hidden className="h-3.5 w-3.5 opacity-60" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
@@ -218,7 +222,10 @@ export function SummonerTabs({ onRefresh }: Props) {
               >
                 <span className="truncate">{opt.label}</span>
                 {queueFilter === opt.value ? (
-                  <Check className="h-3.5 w-3.5 text-primary" />
+                  <>
+                    <Check aria-hidden className="h-3.5 w-3.5 text-primary" />
+                    <span className="sr-only">已选中</span>
+                  </>
                 ) : null}
               </DropdownMenuItem>
             ))}

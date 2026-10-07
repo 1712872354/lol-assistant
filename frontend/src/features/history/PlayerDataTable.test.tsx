@@ -61,12 +61,13 @@ function mkRow(over: Partial<PlayerRow>): PlayerTableRowData {
   };
 }
 
-/** 读取表格中玩家名出现顺序 */
+/** 读取表格中玩家名出现顺序（每行第一个按钮=玩家名，跳过表头行） */
 function nameOrder(): string[] {
   const table = screen.getByRole("table");
   return within(table)
-    .getAllByRole("button")
-    .map((b) => b.textContent?.trim() ?? "")
+    .getAllByRole("row")
+    .slice(1)
+    .map((r) => within(r).getAllByRole("button")[0]?.textContent?.trim() ?? "")
     .filter(Boolean);
 }
 
@@ -80,7 +81,7 @@ describe("PlayerDataTable 排序", () => {
     expect(nameOrder()).toEqual(["高分#CN1", "中分#CN1", "低分#CN1"]);
   });
 
-  it("点击伤害列头按伤害降序再点升序（数值列默认高值优先）", async () => {
+  it("点击伤害列排序按钮按伤害降序再点升序（数值列默认高值优先）", async () => {
     const user = userEvent.setup();
     renderTable([
       mkRow({ name: "低伤#CN1", totalDamage: 10000, matchRating: 3.1 }),
@@ -88,18 +89,28 @@ describe("PlayerDataTable 排序", () => {
       mkRow({ name: "中伤#CN1", totalDamage: 20000, matchRating: 6.0 }),
     ]);
 
-    const dmgHeader = screen.getByRole("columnheader", { name: /伤害/ });
-    await user.click(dmgHeader);
+    // 排序交互由列头内的 <button> 承载（键盘可达）
+    const dmgSortBtn = screen.getByRole("button", { name: /按伤害排序/ });
+    await user.click(dmgSortBtn);
     expect(nameOrder()).toEqual(["高伤#CN1", "中伤#CN1", "低伤#CN1"]);
 
-    await user.click(dmgHeader);
+    await user.click(dmgSortBtn);
     expect(nameOrder()).toEqual(["低伤#CN1", "中伤#CN1", "高伤#CN1"]);
   });
 
-  it("装备列不提供排序", () => {
+  it("可排序列头带 aria-sort，装备列不提供排序", () => {
     renderTable([mkRow({})]);
+    // th 的可访问名 = 列名 + 列说明（sr-only），按列名开头锚定
+    const dmgHeader = screen.getByRole("columnheader", { name: /^伤害/ });
+    expect(dmgHeader.getAttribute("aria-sort")).toBe("none");
+
+    // 默认按评分降序
+    const ratingHeader = screen.getByRole("columnheader", { name: /^评分/ });
+    expect(ratingHeader.getAttribute("aria-sort")).toBe("descending");
+
     const itemsHeader = screen.getByRole("columnheader", { name: "装备" });
     expect(itemsHeader.className).not.toContain("cursor-pointer");
+    expect(itemsHeader.getAttribute("aria-sort")).toBeNull();
     expect(within(itemsHeader).queryByRole("button")).toBeNull();
   });
 

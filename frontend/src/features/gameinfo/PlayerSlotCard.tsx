@@ -74,6 +74,14 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
     navigate("/history");
   };
 
+  // aria-label 覆盖内部文本，需自含关键信息（段位/胜率/KDA/评分）
+  const rankBrief = [solo.main ? `单双 ${solo.main}` : "", flex.main ? `灵活 ${flex.main}` : ""]
+    .filter(Boolean)
+    .join("，");
+  const detailLabel =
+    `查看 ${base} 的战绩详情（${rankBrief ? `${rankBrief}；` : ""}` +
+    `胜率 ${winRate.toFixed(1)}%，KDA ${avgKda.toFixed(2)}，评分 ${(slot.playerScore ?? 0).toFixed(1)}）`;
+
   return (
     <div
       className={cn(
@@ -90,6 +98,7 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
           onClick={openDetail}
           disabled={!slot.puuid}
           title="在战绩页查看该玩家"
+          aria-label={detailLabel}
           className="block w-full text-left disabled:pointer-events-none"
         >
           <div className="flex items-center gap-2.5">
@@ -101,14 +110,17 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
                 className="rounded-lg ring-1 ring-black/10"
               />
               {slot.isSelf ? (
-                <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-brand-gold ring-2 ring-self-card-bg" />
+                <div
+                  aria-hidden
+                  className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-brand-gold ring-2 ring-self-card-bg"
+                />
               ) : null}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-1">
                 <span className="truncate text-[13px] font-semibold leading-tight">{base}</span>
                 {tag ? (
-                  <span className="shrink-0 text-[10px] leading-tight text-muted-foreground/70">{tag}</span>
+                  <span className="shrink-0 text-[11px] leading-tight text-muted-foreground/80">{tag}</span>
                 ) : null}
               </div>
               <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
@@ -118,7 +130,7 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
                     {flex.main ? <RankChip main={flex.main} lp={flex.lp} variant="secondary" title="灵活排位" /> : null}
                   </>
                 ) : (
-                  <span className="text-[10px] text-muted-foreground/60">{UNRANKED}</span>
+                  <span className="text-[11px] text-muted-foreground/75">{UNRANKED}</span>
                 )}
               </div>
             </div>
@@ -133,16 +145,22 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
                     "stat-num text-[22px] font-bold leading-none tracking-tight",
                     wrTone === "good" && "text-good-fg",
                     wrTone === "bad" && "text-loss-fg",
-                    wrTone === "mid" && "text-amber-500",
+                    wrTone === "mid" && "text-mid-fg",
                   )}
                 >
                   {winRate.toFixed(1)}%
                 </span>
-                <span className="text-[10px] text-muted-foreground/60">胜率</span>
+                <span className="text-[11px] text-muted-foreground/75">
+                  胜率
+                  {/* 颜色档位的第二编码（WCAG 1.4.1） */}
+                  <span className="sr-only">
+                    （{wrTone === "good" ? "较高" : wrTone === "bad" ? "较低" : "中等"}）
+                  </span>
+                </span>
               </div>
-              <ThreatBar value={winRate} tone={wrTone} />
+              <ThreatBar value={winRate} tone={wrTone} label="胜率" />
             </div>
-            <div className="h-6 w-px bg-border/30" />
+            <div aria-hidden className="h-6 w-px bg-border/30" />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-1">
                 <span
@@ -150,26 +168,32 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
                     "stat-num text-[22px] font-bold leading-none tracking-tight",
                     kdaTone === "good" && "text-good-fg",
                     kdaTone === "bad" && "text-loss-fg",
+                    kdaTone === "mid" && "text-mid-fg",
                   )}
                 >
                   {avgKda.toFixed(2)}
                 </span>
-                <span className="text-[10px] text-muted-foreground/60">KDA</span>
+                <span className="text-[11px] text-muted-foreground/75">
+                  KDA
+                  <span className="sr-only">
+                    （{kdaTone === "good" ? "较高" : kdaTone === "bad" ? "较低" : "中等"}）
+                  </span>
+                </span>
               </div>
-              <ThreatBar value={avgKda} max={6} tone={kdaTone} />
+              <ThreatBar value={avgKda} max={6} tone={kdaTone} label="KDA" />
             </div>
           </div>
 
           {/* 评分 + 近况英雄缩略 */}
           <div className="mt-2 flex items-center gap-1.5">
             <span
-              className="rounded bg-brand-gold/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-gold"
-              title="综合评分 = 胜率/20 + 近况均 KDA"
+              className="rounded bg-brand-gold/15 px-1.5 py-0.5 text-[11px] font-semibold text-brand-gold"
             >
+              <span className="sr-only">综合评分（胜率/20 + 近况均 KDA）：</span>
               {(slot.playerScore ?? 0).toFixed(1)}
             </span>
             {slot.hiddenCareer ? (
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground/70">
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground/80">
                 隐藏
               </span>
             ) : null}
@@ -182,6 +206,7 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
                   size={20}
                   className="rounded ring-1 ring-black/10"
                   title={`${r.kills}/${r.deaths}/${r.assists}`}
+                  alt={`近况 KDA ${r.kills}/${r.deaths}/${r.assists}`}
                 />
               ))}
             </div>
@@ -192,9 +217,9 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
           title="复制 Riot ID"
           aria-label="复制 Riot ID"
           onClick={copyRiotId}
-          className="absolute right-1.5 top-1.5 rounded p-1 text-muted-foreground/40 transition-colors hover:bg-muted hover:text-foreground"
+          className="absolute right-1.5 top-1.5 rounded p-1 text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
         >
-          <Copy className="h-3 w-3" />
+          <Copy aria-hidden className="h-3 w-3" />
         </button>
       </div>
 
@@ -205,10 +230,10 @@ export function PlayerSlotCard({ slot, teamKey, offline, showCaption }: Props) {
         onClick={openDetail}
         disabled={!slot.puuid}
         title="在战绩页查看该玩家"
-        className="flex shrink-0 items-center justify-center gap-0.5 border-t border-border/20 py-1.5 text-[11px] text-muted-foreground/70 transition-colors hover:bg-muted/40 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        className="flex shrink-0 items-center justify-center gap-0.5 border-t border-border/20 py-1.5 text-[11px] text-muted-foreground/80 transition-colors hover:bg-muted/40 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
       >
         战绩详情
-        <ChevronRight className="h-3 w-3" />
+        <ChevronRight aria-hidden className="h-3 w-3" />
       </button>
     </div>
   );
