@@ -1,0 +1,15 @@
+{
+  "version": "1.4.0",
+  "notes": "### 无障碍\r\n\r\n- **WCAG 2.2 AA 合规（战绩/对局两页 17 项闭环）**：表头排序按钮化 + `aria-sort`、全局键盘焦点环、标签关闭按钮移出非法嵌套\r\n- **语义色不单靠颜色**：本人行 / 威胁档位补文字；装备/召唤师技能/符文 alt 朗读真实名称（`get_match_asset_names` + `useAssetNames`）\r\n- **状态与标题**：错误 `role=\"alert\"`、骨架 `aria-hidden`+加载播报、队头标题层级、复制成功 live region\r\n- **对比度**：亮色主题 muted/destructive/win/good/brand-gold 拉深至 ≥4.5:1；支持 `prefers-reduced-motion`\r\n\r\n### 界面\r\n\r\n- **对局页 / 战绩页微调**：段位徽章、近况行、筛选控件与列表卡片视觉对齐\r\n- **键盘焦点可见**：原生按钮与交互元素统一焦点环\r\n\r\n### 工程\r\n\r\n- 新增 `docs/a11y-audit-history-gameinfo.md` 无障碍审计记录\r\n- 根 `package.json` 版本与前端对齐\r\n\r\n---",
+  "pub_date": "2026-10-07T16:18:15Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTalg4QWhJS08ya2I2S1Nzcyt2V2s1QStjV2V0ZmRkNllYT0dyemtaTWVwdWNWcy93WUJaOUlWbDhpalY2SlY0T2RiOXI1MnQyemtWTHpJcmM0MHVkckIxdEpqUU1Wb2dRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkxMzg5ODk0CWZpbGU6TE9M5Yqp5omLXzEuNC4wX3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjQuMAo0YlB6RXFSR0tKVGQ4clBpU3dyR2N2YjRMRSt5VzF2YlRGeEk4eHVSR1Y1cmxaenVjWFZuNVNjVGpzVXVlbEVqa2RyVzhxTnJNcnhGVUZTMVpRN21Ddz09Cg==",
+      "url": "https://raw.githubusercontent.com/1712872354/lol-assistant/dist/LOLAssistant-Setup-1.4.0.exe"
+    },
+    "windows-x86_64-portable": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTalg4QWhJS08ya2RNUFNUYS9XUFdoeE9VWmhwRGZMWWlaaktPS0ZYK2dnNWZwMHdtbVhjaTVhVWpUbERXbmhaNWYxd0RtbzJpQ0Fhelo3cml4TTlRL1pWNGtTd3Y0WHdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkxMzg5ODk1CWZpbGU6TE9MQXNzaXN0YW50LVBvcnRhYmxlLTEuNC4wLnppcAp5bkRQeDM1aXNjTG0wK3dZalZwVld5T2k2blFNNkQxYU9tZFVOZ00vb2VjQS91MnFZVzVLRTh4WFdoc0o4S3R0bm9lSnM1VWdnV1VZK0Z2U3ZDWGJBQT09Cg==",
+      "url": "https://raw.githubusercontent.com/1712872354/lol-assistant/dist/LOLAssistant-Portable-1.4.0.zip"
+    }
+  }
+}

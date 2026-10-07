@@ -1,0 +1,2 @@
+229605318d82d2b91c5179b29405d4767b86ae043651275330bddaf5d21e5d8d  LOLAssistant-Portable-1.4.0.zip
+b49a23fbde3ce3758d6b78aa15401a7751ba15e94c6cf432953224d754bd5dec  LOLAssistant-Setup-1.4.0.exe
