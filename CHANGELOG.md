@@ -2,6 +2,27 @@
 
 本文件对应 GitHub Release 说明。发版时把对应小节正文贴到 Release 描述即可（或由 Actions 从本文件摘取并附上 `SHA256SUMS`）。
 
+## [v1.4.0] - 2026-10-07
+
+### 无障碍
+
+- **WCAG 2.2 AA 合规（战绩/对局两页 17 项闭环）**：表头排序按钮化 + `aria-sort`、全局键盘焦点环、标签关闭按钮移出非法嵌套
+- **语义色不单靠颜色**：本人行 / 威胁档位补文字；装备/召唤师技能/符文 alt 朗读真实名称（`get_match_asset_names` + `useAssetNames`）
+- **状态与标题**：错误 `role="alert"`、骨架 `aria-hidden`+加载播报、队头标题层级、复制成功 live region
+- **对比度**：亮色主题 muted/destructive/win/good/brand-gold 拉深至 ≥4.5:1；支持 `prefers-reduced-motion`
+
+### 界面
+
+- **对局页 / 战绩页微调**：段位徽章、近况行、筛选控件与列表卡片视觉对齐
+- **键盘焦点可见**：原生按钮与交互元素统一焦点环
+
+### 工程
+
+- 新增 `docs/a11y-audit-history-gameinfo.md` 无障碍审计记录
+- 根 `package.json` 版本与前端对齐
+
+---
+
 ## [v1.3.0] - 2026-09-27
 
 ### 性能
@@ -16,13 +37,6 @@
 - **空槽等待态重设计**：极简虚线框 + 图标替代彩色骨架，不再抢注意力
 - **视觉质感提升**：阴影分层系统、滚动条半透明细条、金色光晕效果、字体渲染优化
 - **数据冲击力增强**：KDA/伤害/评分数字加粗突出，胜负标识色块药丸，评分色彩分级
-
-### 无障碍
-
-- **WCAG 2.2 AA 合规（战绩/对局两页 17 项闭环）**：表头排序按钮化 + `aria-sort`、全局键盘焦点环、标签关闭按钮移出非法嵌套
-- **语义色不单靠颜色**：本人行 / 威胁档位补文字；装备/召唤师技能/符文 alt 朗读真实名称（`get_match_asset_names` + `useAssetNames`）
-- **状态与标题**：错误 `role="alert"`、骨架 `aria-hidden`+加载播报、队头标题层级、复制成功 live region
-- **对比度**：亮色主题 muted/destructive/win/good/brand-gold 拉深至 ≥4.5:1；支持 `prefers-reduced-motion`
 
 ### 数据
 
